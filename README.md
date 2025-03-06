@@ -2,7 +2,9 @@
 
 FluidicGUI is a web-based graphical user interface for designing, controlling, and simulating microfluidic flow chemistry experiments. It provides an intuitive interface for creating droplet sequences, managing flow parameters, and communicating with microfluidic hardware via MQTT.
 
-![FluidicGUI Screenshot](screenshot.png) <!-- Add a screenshot of your application here -->
+![FluidicGUI Screenshot1](Capture1.PNG)
+![FluidicGUI Screenshot2](Capture2.PNG)
+![FluidicGUI Screenshot3](Capture3.PNG)
 
 ## Overview
 
