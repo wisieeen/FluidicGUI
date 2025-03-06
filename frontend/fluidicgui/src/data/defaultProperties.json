@@ -1,0 +1,234 @@
+{
+  "edges": {
+    "default": {
+      "length": 100, 
+      "diameter": 1
+    }
+  },
+  "droplet": {
+    "label":"droplet",
+    "description":"general droplet configuration node. Must be included in every flow",
+    "properties": [
+      {
+        "name": "minSeparationVolume",
+        "label": "Minimum Separation Volume [uL]",
+        "type": "number",
+        "default": 5
+      }
+    ],
+
+    "parameters": [
+      {
+        "name": "volume",
+        "description": "droplet volume [uL]",
+        "min": 0,
+        "max": 100,
+        "default": 5
+      },
+      {
+        "name": "prefixVolume",
+        "description": "carrier liquid volume in front of droplet [uL]",
+        "min": 0,
+        "max": 100,
+        "default": 0
+      },
+      {
+        "name": "surfixVolume",
+        "description": "carrier liquidvolume after droplet [uL]",
+        "min": 0,
+        "max": 100,
+        "default": 5
+      },
+      {
+        "name": "volumetricSpeed",
+        "description": "volume per time unit pushed through first pump [uL/s]",
+        "min": 0,
+        "max": 20,
+        "default": 2
+      }
+
+    ]
+  },
+  "pump": {
+    "label": "Pump",
+    "description":"infusion pump",
+    "properties": [
+      {
+        "name": "diameter",
+        "label": "Syringe Diameter [mm]",
+        "type": "number",
+        "default": 7.284
+      },
+      {
+        "name": "length",
+        "label": "Syringe Length [mm]",
+        "type": "number",
+        "default": 60
+      },
+      {
+        "name": "steps per revolution",
+        "label": "how many steps motor does to do single revolution",
+        "type": "number",
+        "default": 1600
+      },
+      {
+        "name": "lead",
+        "label": "distance moved by single revolution [mm]",
+        "type": "number",
+        "default": 1
+      },
+      {
+        "name": "MQTTname",
+        "label": "name in MQTT or first part of message topic, used for communication",
+        "type": "string",
+        "default": "pump1"
+      },
+      {
+        "name": "content",
+        "label": "Content",
+        "type": "text",
+        "default": "water"
+      },
+      {
+        "name": "carrier",
+        "label": "is it a carrier liquid?",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "parameters": [
+      {
+        "name": "ratio",
+        "description": "volume fraction in droplet [0-1]",
+        "min": 0,
+        "max": 1,
+        "default":0.5
+      }
+    ],
+    "controlables": [
+      {
+        "name": "Volume [μL]",
+        "description": "volume squeezed through pump",
+        "min": 0,
+        "max": 2500,
+        "default":100,
+        "script": "pumpVolume.js"
+      },
+      {
+        "name": "Speed [μL/s]",
+        "description": "speed of pump",
+        "min": 0,
+        "max": 100,
+        "default":20,
+        "script": "pumpSpeed.js"
+      }
+    ]
+  },
+  "detector": {
+    "label": "Detector",
+    "description":"detector placeholder",
+    "properties": [
+      {
+        "name": "MQTTname",
+        "label": "name in MQTT or first part of message topic, used for communication",
+        "type": "string",
+        "default": "pump1"
+      },
+      {
+        "name": "samplingRate",
+        "label": "Sampling Rate [Hz]",
+        "type": "number",
+        "default": 5
+      }
+    ]
+  },
+  "connector": {
+    "label": "Connector",
+    "description":"connector, has some internal volume that must be specified for droplet syncing",
+    "properties": [
+      {
+        "name": "volume",
+        "label": "Volume [uL]",
+        "type": "number",
+        "default": 2
+      }
+    ]
+  },
+  "thermostat": {
+    "label": "Thermostat",
+    "description":"Thermostat sets temperature. This node symbolize place where droplet enters chamber.",
+    "properties": [{
+      "name": "mintemp",
+      "label": "Min temp [C]",
+      "type": "number",
+      "default": 20
+    },
+    {
+      "name": "maxtemp",
+      "label": "Max temp [C]",
+      "type": "number",
+      "default": 200
+    },
+    {
+      "name": "MQTTname",
+      "label": "name in MQTT or first part of message topic, used for communication",
+      "type": "string",
+      "default": "thermostat1"
+    },
+    {
+      "name": "end",
+      "label": "end of thermostat",
+      "type": "boolean",
+      "default": false
+    }],
+    "parameters": [
+      {
+        "name": "temperature",
+        "description": "temperature in thermostat [oC]",
+        "default": 25
+      },
+      {
+        "name": "time",
+        "description": "time spent in thermostat [s]",
+        "default": 5
+      }
+    ],
+    "ender": "thermostatend"    
+  },
+  "led": {
+    "label": "LED",
+    "description":"LED emits electromagnetic waves. This node symbolize spot there irradiation starts.",
+    "properties": [
+      {
+        "name": "MQTTname",
+        "label": "name in MQTT or first part of message topic, used for communication",
+        "type": "string",
+        "default": "LED1"
+      },
+      {
+        "name": "wavelength",
+        "label": "Wavelength [nm]",
+        "type": "number",
+        "default": 405
+      }
+    ],
+    "parameters": [
+      {
+        "name": "power",
+        "description": "power of LED [0-1]",
+        "default": 0.25
+      },
+      {
+        "name": "time",
+        "description": "time spent irradiated [s]",
+        "default": 5
+      }
+    ],
+    "ender": "ledend"
+  },
+  "outlet": {
+    "label": "outlet",
+    "description":"End of tubing",
+    "properties": []
+  }
+}

@@ -1,0 +1,10 @@
+---
+description: all elements that alter visual aspects of UI are on the right side, i.e. 'Button Color' button in @NavigationBar.js
+globs: 
+alwaysApply: false
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to

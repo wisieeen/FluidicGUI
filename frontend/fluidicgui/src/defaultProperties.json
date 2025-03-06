@@ -1,0 +1,92 @@
+{
+  "edges": {
+    "default": {
+      "length": 100, 
+      "diameter": 10
+    }
+  },
+  "pump": {
+    "label": "Pump",
+    "properties": [
+      {
+        "name": "diameter",
+        "label": "Syringe Diameter [mm]",
+        "type": "number",
+        "default": 5
+      },
+      {
+        "name": "length",
+        "label": "Syringe Length [mm]",
+        "type": "number",
+        "default": 100
+      },
+      {
+        "name": "content",
+        "label": "Content",
+        "type": "text",
+        "default": "water"
+      }
+    ]
+  },
+  "detector": {
+    "label": "Detector",
+    "properties": [
+      {
+        "name": "samplingRate",
+        "label": "Sampling Rate [Hz]",
+        "type": "number",
+        "default": 5
+      }
+    ]
+  },
+  "connector": {
+    "label": "Connector",
+    "properties": [
+      {
+        "name": "volume",
+        "label": "Volume [mL]",
+        "type": "number",
+        "default": 0.01
+      }
+    ]
+  },
+  "thermostatstart": {
+    "label": "Thermostat start",
+    "properties": [{
+      "name": "mintemp",
+      "label": "Min temp [C]",
+      "type": "number",
+      "default": 20
+    },
+    {
+      "name": "maxtemp",
+      "label": "Max temp [C]",
+      "type": "number",
+      "default": 200
+    }
+  ]
+  },
+  "thermostatend": {
+    "label": "Thermostat end",
+    "properties": []
+  },
+  "uvledstart": {
+    "label": "UV LED",
+    "properties": [
+      {
+        "name": "wavelength",
+        "label": "Wavelength [nm]",
+        "type": "number",
+        "default": 405
+      }
+    ]
+  },
+  "uvledend": {
+    "label": "UV LED end",
+    "properties": []
+  },
+  "outlet": {
+    "label": "outlet",
+    "properties": []
+  }
+}

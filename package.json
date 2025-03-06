@@ -1,0 +1,15 @@
+{
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "scripts": {
+    "start": "concurrently \"npm run start --prefix backend\" \"npm run start --prefix frontend\\fluidicgui\""
+  },
+  "dependencies": {
+    "d3": "^5.5.0",
+    "react-force-graph-2d": "^1.25.5",
+    "react-graph-vis": "^1.0.7",
+    "react-redux": "^9.1.2",
+    "redux": "^5.0.1"
+  }
+}
