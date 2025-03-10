@@ -126,20 +126,45 @@
   },
   "detector": {
     "label": "Detector",
-    "description":"detector placeholder",
+    "description":"detector",
     "properties": [
       {
         "name": "MQTTname",
         "label": "name in MQTT or first part of message topic, used for communication",
         "type": "string",
-        "default": "pump1"
+        "default": "detector_1"
       },
       {
-        "name": "samplingRate",
-        "label": "Sampling Rate [Hz]",
+        "name": "detector profile",
+        "label": "detector .../profiles/ filepath",
+        "type": "string",
+        "default": "detector_1"
+      },
+      {
+        "name": "wait time",
+        "label": "wait before measurement, delay in ms after front passes detector.",
         "type": "number",
-        "default": 5
+        "default": "10"
+      },
+      {
+        "name": "initial volume",
+        "label": "tube volume  [uL]",
+        "type": "number",
+        "default": "10"
+      },
+      {
+        "name": "residual volume",
+        "label": "residual volume [uL]",
+        "type": "number",
+        "default": "10"
+      },
+      {
+        "name": "measurement Volume",
+        "label": "volume of liquid measured simultaneously [uL]",
+        "type": "number",
+        "default": "10"
       }
+      
     ]
   },
   "connector": {
