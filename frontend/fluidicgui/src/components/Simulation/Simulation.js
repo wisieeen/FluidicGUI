@@ -20,6 +20,8 @@ import {
 import './simulation.css'; // We'll create this CSS file
 import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
+import DetectorPanel from './DetectorPanel';
+import { convertDetectorReading } from '../../utils/detectorCalculations';
 
 const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPumps = [], onBack, onNext }) => {
   const buttonVariants = useButtonStyles();
@@ -47,6 +49,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const [ws, setWs] = useState(null);
   const [pumpPanelPosition, setPumpPanelPosition] = useState({ x: window.innerWidth - 300, y: 100 });
   const [visiblePumpPanel, setVisiblePumpPanel] = useState(null);
+  const [selectedDetector, setSelectedDetector] = useState(null);
+  const [detectorReadings, setDetectorReadings] = useState([]);
 
   useEffect(() => {
     // Create WebSocket connection
@@ -289,12 +293,21 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     };
 
     const convertDetectorEvent = (event, deviceProperties) => {
-      // Placeholder for detector conversion logic
+      // Use the detector values in the event
+      const reading = {
+        value: event.value,
+        timestamp: event.time * 1000 // Convert to milliseconds
+      };
+      
+      // Use our detector calculations utility
+      const processedReading = convertDetectorReading(reading, deviceProperties);
+      
       return {
         target: event.target,
-        time: Math.round(event.time * 1000000),
-        setting: event.value,
-        // Add other detector-specific parameters here
+        time: Math.round(event.time * 1000000), // Convert to microseconds for hardware
+        setting: processedReading.calibratedValue,
+        rawValue: processedReading.rawValue,
+        unit: processedReading.unit
       };
     };
 
@@ -768,6 +781,22 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
           else if (reachedNode.node.type === 'detector') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
+            const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
+            if (nextNode) {
+              const nextEdge = graphData.links.find(link => link.source === smallestFrontTimeDroplet[0].frontNextNodeID && link.target === nextNode.node.id);
+              //aktualizuje krople
+              currentBlockDroplets.forEach(droplet => {
+                droplet.frontTimeToReachNextNode -= smallestFrontTime;
+                droplet.rearTimeToReachNextNode -= smallestFrontTime;
+                droplet.frontVolumetricDistanceToNextNode -= smallestFrontTime * droplet.frontVolumetricSpeed;
+                droplet.rearVolumetricDistanceToNextNode -= smallestFrontTime * droplet.rearVolumetricSpeed;
+                droplet.frontVolumetricPosition += smallestFrontTime * droplet.frontVolumetricSpeed;
+                droplet.rearVolumetricPosition += smallestFrontTime * droplet.rearVolumetricSpeed;
+              });
+              smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode = calculateEdgeVolume(nextEdge);
+              smallestFrontTimeDroplet[0].frontTimeToReachNextNode = smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode / smallestFrontTimeDroplet[0].frontVolumetricSpeed;
+              smallestFrontTimeDroplet[0].frontNextNodeID = nextNode.node.id;
+            }
           }
         }
       } 
@@ -1015,6 +1044,22 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
           else if (reachedNode.node.type === 'detector') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
+            const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
+            if (nextNode) {
+              const nextEdge = graphData.links.find(link => link.source === smallestRearTimeDroplet[0].rearNextNodeID && link.target === nextNode.node.id);
+              //aktualizuje krople
+              currentBlockDroplets.forEach(droplet => {
+                droplet.frontTimeToReachNextNode -= smallestRearTime;
+                droplet.rearTimeToReachNextNode -= smallestRearTime;
+                droplet.frontVolumetricDistanceToNextNode -= smallestRearTime * droplet.frontVolumetricSpeed;
+                droplet.rearVolumetricDistanceToNextNode -= smallestRearTime * droplet.rearVolumetricSpeed;
+                droplet.frontVolumetricPosition += smallestRearTime * droplet.frontVolumetricSpeed;
+                droplet.rearVolumetricPosition += smallestRearTime * droplet.rearVolumetricSpeed;
+              });
+              smallestRearTimeDroplet[0].rearVolumetricDistanceToNextNode = calculateEdgeVolume(nextEdge);
+              smallestRearTimeDroplet[0].rearTimeToReachNextNode = smallestRearTimeDroplet[0].rearVolumetricDistanceToNextNode / smallestRearTimeDroplet[0].rearVolumetricSpeed;
+              smallestRearTimeDroplet[0].rearNextNodeID = nextNode.node.id;
+            }
           }
         }
       }
@@ -1409,6 +1454,11 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const handleNodeClick = (node) => {
     if (node.type === 'pump') {
       setSelectedNode(node);
+    } else if (node.type === 'detector') {
+      setSelectedDetector(node);
+      // Generate sample readings for demo purposes
+      const sampleReadings = generateSampleDetectorReadings();
+      setDetectorReadings(sampleReadings);
     }
   };
 
@@ -1620,6 +1670,29 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     opacity: '0.7',
     transition: 'opacity .2s'
     // Remove all pseudo-element styles that were here
+  };
+
+  // Generate some sample readings for demonstration
+  const generateSampleDetectorReadings = () => {
+    const readings = [];
+    const now = Date.now();
+    
+    // Generate a sine wave with some noise for demo
+    for (let i = 0; i < 100; i++) {
+      const baseValue = Math.sin(i / 10) * 0.5 + 0.5; // 0 to 1 sine wave
+      const noise = Math.random() * 0.1; // Random noise
+      
+      readings.push({
+        value: baseValue + noise,
+        timestamp: now - (100 - i) * 100, // timestamps going backwards from now
+      });
+    }
+    
+    return readings;
+  };
+
+  const handleCloseDetectorPanel = () => {
+    setSelectedDetector(null);
   };
 
   return (
@@ -2144,6 +2217,16 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
         `}
       </style>
+      
+      {/* Render detector panel if a detector is selected */}
+      {selectedDetector && (
+        <DetectorPanel 
+          detector={selectedDetector} 
+          readings={detectorReadings}
+          onClose={handleCloseDetectorPanel}
+          initialPosition={{ x: 50, y: 100 }}
+        />
+      )}
     </div>
   );
 };
