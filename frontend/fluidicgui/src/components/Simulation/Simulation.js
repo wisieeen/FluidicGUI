@@ -20,7 +20,7 @@ import {
 import './simulation.css'; // We'll create this CSS file
 import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
-import DetectorPanel from './DetectorPanel';
+import NewDetectorPanel from './NewDetectorPanel';
 import { convertDetectorReading } from '../../utils/detectorCalculations';
 
 const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPumps = [], onBack, onNext }) => {
@@ -2220,7 +2220,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       
       {/* Render detector panel if a detector is selected */}
       {selectedDetector && (
-        <DetectorPanel 
+        <NewDetectorPanel 
           detector={selectedDetector} 
           readings={detectorReadings}
           onClose={handleCloseDetectorPanel}
