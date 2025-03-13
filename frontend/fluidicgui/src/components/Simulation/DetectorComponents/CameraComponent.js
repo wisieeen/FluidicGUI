@@ -29,7 +29,7 @@ const CameraComponent = React.forwardRef((props, ref) => {
   
   // Line adjustment state
   const [lineYOffset, setLineYOffset] = useState(0);
-  const [lineRotation, setLineRotation] = useState(0);
+  const [lineXOffset, setLineXOffset] = useState(0);
   const [originalLineStart, setOriginalLineStart] = useState({ x: 0, y: 0 });
   const [originalLineEnd, setOriginalLineEnd] = useState({ x: 0, y: 0 });
   
@@ -62,7 +62,7 @@ const CameraComponent = React.forwardRef((props, ref) => {
         lineStart: originalLineStart,
         lineEnd: originalLineEnd,
         lineYOffset: lineYOffset,
-        lineRotation: lineRotation
+        lineXOffset: lineXOffset
       };
     },
     
@@ -142,8 +142,8 @@ const CameraComponent = React.forwardRef((props, ref) => {
             setLineYOffset(settings.lineYOffset);
           }
           
-          if (settings.lineRotation !== undefined) {
-            setLineRotation(settings.lineRotation);
+          if (settings.lineXOffset !== undefined) {
+            setLineXOffset(settings.lineXOffset);
           }
           
           // Calculate transformed line with adjustments
@@ -174,15 +174,51 @@ const CameraComponent = React.forwardRef((props, ref) => {
   // Initialize canvas size when video size changes
   useEffect(() => {
     if (canvasRef.current) {
+      console.log('Setting canvas dimensions to:', cameraSize.width, cameraSize.height);
       canvasRef.current.width = cameraSize.width;
       canvasRef.current.height = cameraSize.height;
       
       // If line is drawn, redraw it when canvas size changes
       if (isLineDrawn) {
-        drawLine();
+        console.log('Redrawing line due to canvas size change');
+        
+        // Ensure the redraw happens after the canvas size is updated
+        // by using a small timeout
+        setTimeout(() => {
+          drawLine();
+          
+          // Double-check with another redraw after a slight delay
+          setTimeout(() => drawLine(), 100);
+        }, 0);
       }
     }
   }, [cameraSize.width, cameraSize.height, isLineDrawn]);
+  
+  // Add a new effect for continuous redrawing of the line
+  useEffect(() => {
+    let animationId;
+    
+    // Function to continuously redraw the line
+    const redrawLine = () => {
+      if (isLineDrawn && canvasRef.current) {
+        drawLine();
+      }
+      animationId = requestAnimationFrame(redrawLine);
+    };
+    
+    // Start animation if line is drawn
+    if (isLineDrawn) {
+      console.log('Starting continuous line redraw');
+      animationId = requestAnimationFrame(redrawLine);
+    }
+    
+    // Cleanup function
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [isLineDrawn, isExtracting, lineYOffset, lineXOffset]);
   
   // Extract line data effect - runs continuously when line is drawn
   useEffect(() => {
@@ -201,9 +237,15 @@ const CameraComponent = React.forwardRef((props, ref) => {
             start: transformedLine.start,
             end: transformedLine.end,
             yOffset: lineYOffset,
-            rotation: lineRotation,
+            xOffset: lineXOffset,
             pixelData: lineData
           });
+        }
+        
+        // Make sure the line remains visible during extraction
+        // This ensures data is extracted but line stays visible
+        if (isLineDrawn) {
+          requestAnimationFrame(() => drawLine());
         }
       }
       
@@ -225,7 +267,55 @@ const CameraComponent = React.forwardRef((props, ref) => {
         animationRequestRef.current = null;
       }
     };
-  }, [isLineDrawn, isCameraActive, isExtracting, lineYOffset, lineRotation]);
+  }, [isLineDrawn, isCameraActive, isExtracting, lineYOffset, lineXOffset]);
+  
+  // Add a separate dedicated effect for line drawing that runs regardless of extraction state
+  useEffect(() => {
+    if (!isLineDrawn || !isCameraActive) return;
+    
+    console.log('Setting up dedicated line drawing effect');
+    
+    const drawLineFrame = () => {
+      if (canvasRef.current && isLineDrawn) {
+        drawLine();
+      }
+      requestAnimationFrame(drawLineFrame);
+    };
+    
+    const animationId = requestAnimationFrame(drawLineFrame);
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [isLineDrawn, isCameraActive]);
+  
+  // Add an effect to draw the line every time the video frame updates
+  useEffect(() => {
+    if (!videoRef.current || !isCameraActive || !isLineDrawn) return;
+
+    const video = videoRef.current;
+    
+    // Function to handle video frames and redraw the line
+    const handleVideoFrame = () => {
+      if (isLineDrawn) {
+        console.log('Redrawing line on video frame update');
+        drawLine();
+      }
+    };
+
+    // Add event listeners to ensure line is drawn when video updates
+    video.addEventListener('play', handleVideoFrame);
+    video.addEventListener('timeupdate', handleVideoFrame);
+    
+    // Draw immediately
+    drawLine();
+    
+    // Cleanup
+    return () => {
+      video.removeEventListener('play', handleVideoFrame);
+      video.removeEventListener('timeupdate', handleVideoFrame);
+    };
+  }, [videoRef.current, isCameraActive, isLineDrawn, lineYOffset, lineXOffset]);
   
   // Function to get available cameras
   const getAvailableCameras = async () => {
@@ -332,9 +422,20 @@ const CameraComponent = React.forwardRef((props, ref) => {
           setCameraGain(null);
         }
       }
+      
+      // If a line was previously drawn, redraw it after a short delay to allow video to initialize
+      if (isLineDrawn) {
+        console.log('Redrawing line after camera start');
+        setTimeout(() => {
+          drawLine();
+        }, 500);
+      }
+      
+      return true;
     } catch (error) {
       console.error('Error starting camera:', error);
       setIsCameraActive(false);
+      return false;
     }
   };
   
@@ -660,10 +761,24 @@ const CameraComponent = React.forwardRef((props, ref) => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    // Constrain to video bounds
-    const boundedX = Math.max(0, Math.min(x, cameraSize.width));
-    const boundedY = Math.max(0, Math.min(y, cameraSize.height));
+    console.log('Mouse down at:', x, y, 'Rectangle:', rect.width, rect.height);
+    console.log('Camera size:', cameraSize.width, cameraSize.height);
     
+    // Calculate scale factors if the displayed size differs from the canvas size
+    const scaleX = cameraSize.width / rect.width;
+    const scaleY = cameraSize.height / rect.height;
+    
+    // Apply scaling
+    const scaledX = x * scaleX;
+    const scaledY = y * scaleY;
+    
+    console.log('Scaled position:', scaledX, scaledY);
+    
+    // Constrain to video bounds
+    const boundedX = Math.max(0, Math.min(scaledX, cameraSize.width));
+    const boundedY = Math.max(0, Math.min(scaledY, cameraSize.height));
+    
+    console.log('Setting line start to:', boundedX, boundedY);
     setLineStart({ x: boundedX, y: boundedY });
     setLineEnd({ x: boundedX, y: boundedY }); // Initially same point
     setIsDrawingLine(true);
@@ -675,49 +790,99 @@ const CameraComponent = React.forwardRef((props, ref) => {
     
     const rect = cameraContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // We ignore the y position from the mouse
+    
+    // Calculate scale factors if the displayed size differs from the canvas size
+    const scaleX = cameraSize.width / rect.width;
+    const scaleY = cameraSize.height / rect.height;
+    
+    // Apply scaling
+    const scaledX = x * scaleX;
+    // Use the y-coordinate from the start point
+    const scaledY = lineStart.y;
     
     // Constrain to video bounds
-    const boundedX = Math.max(0, Math.min(x, cameraSize.width));
-    const boundedY = Math.max(0, Math.min(y, cameraSize.height));
+    const boundedX = Math.max(0, Math.min(scaledX, cameraSize.width));
     
-    setLineEnd({ x: boundedX, y: boundedY });
+    setLineEnd({ x: boundedX, y: scaledY });
+    
+    // Draw the line in real-time while dragging
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      
+      ctx.beginPath();
+      ctx.moveTo(lineStart.x, lineStart.y);
+      ctx.lineTo(boundedX, scaledY);
+      ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)'; // Bright red during drawing
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
   };
   
   // Complete line drawing
   const finishLineDrawing = () => {
     if (!isDrawingLine) return;
     
+    console.log('Finishing line drawing. Line:', lineStart, lineEnd);
+    
+    // First store original line positions for transformations
+    // Do this before changing isDrawingLine to avoid race conditions
+    const originalStart = { ...lineStart };
+    const originalEnd = { ...lineEnd };
+    
+    setOriginalLineStart(originalStart);
+    setOriginalLineEnd(originalEnd);
+    
+    // Draw the line immediately
+    if (canvasRef.current) {
+      console.log('Drawing final line immediately');
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      
+      // Draw a plain line immediately to ensure it's visible
+      ctx.beginPath();
+      ctx.moveTo(lineStart.x, lineStart.y);
+      ctx.lineTo(lineEnd.x, lineEnd.y);
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Draw some debug text to see if canvas is responsive
+      ctx.font = 'bold 20px Arial';
+      ctx.fillStyle = 'white';
+      ctx.fillText('Line drawn!', 50, 50);
+    }
+    
+    // Then update state
     setIsDrawingLine(false);
     setIsLineDrawn(true);
     setIsExtracting(true); // Start extraction when line is drawn
     
-    // Store original line positions for transformations
-    setOriginalLineStart({ ...lineStart });
-    setOriginalLineEnd({ ...lineEnd });
-    
     // Reset transformation values
     setLineYOffset(0);
-    setLineRotation(0);
-    
-    // Draw the line on the canvas
-    drawLine();
+    setLineXOffset(0);
     
     // Notify parent about line data
     if (onLineDataChange) {
       onLineDataChange({
-        start: lineStart,
-        end: lineEnd,
-        yOffset: lineYOffset,
-        rotation: lineRotation
+        start: originalStart,
+        end: originalEnd,
+        yOffset: 0, // Reset on new line
+        xOffset: 0
       });
     }
   };
   
   // Clear the drawn line
   const clearLine = () => {
+    console.log('Clearing line');
     setIsLineDrawn(false);
     setIsExtracting(false); // Stop extraction when line is cleared
+    
+    // Reset all line adjustments
+    setLineYOffset(0);
+    setLineXOffset(0);
     
     // Clear the canvas
     const canvas = canvasRef.current;
@@ -735,7 +900,14 @@ const CameraComponent = React.forwardRef((props, ref) => {
   // Draw the line on the canvas with current transformations
   const drawLine = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !isLineDrawn) return;
+    if (!canvas || !isLineDrawn) {
+      console.log('Cannot draw line - canvas not ready or line not drawn');
+      return;
+    }
+    
+    // Log the current state
+    console.log('DrawLine called, isLineDrawn:', isLineDrawn, 'isDrawingLine:', isDrawingLine);
+    console.log('Canvas size:', canvas.width, canvas.height);
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -743,13 +915,77 @@ const CameraComponent = React.forwardRef((props, ref) => {
     // Calculate transformed line positions
     const transformedLine = calculateTransformedLinePosition();
     
-    // Draw the line
+    console.log('Drawing line from', transformedLine.start, 'to', transformedLine.end);
+    
+    // Set line style for maximum visibility
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    
+    // Draw the line with a glow effect for better visibility
+    // First draw a wider, blurred line for the glow
+    ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
     ctx.beginPath();
     ctx.moveTo(transformedLine.start.x, transformedLine.start.y);
     ctx.lineTo(transformedLine.end.x, transformedLine.end.y);
-    ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 2;
     ctx.stroke();
+    
+    // Then draw the main line on top
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+    ctx.beginPath();
+    ctx.moveTo(transformedLine.start.x, transformedLine.start.y);
+    ctx.lineTo(transformedLine.end.x, transformedLine.end.y);
+    ctx.stroke();
+    
+    // Make endpoints more visible with larger circles
+    // First draw a halo/glow effect
+    ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+    ctx.beginPath();
+    ctx.arc(transformedLine.start.x, transformedLine.start.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(transformedLine.end.x, transformedLine.end.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Then draw the actual points
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+    ctx.beginPath();
+    ctx.arc(transformedLine.start.x, transformedLine.start.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(transformedLine.end.x, transformedLine.end.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add outline to circles for better visibility
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(transformedLine.start.x, transformedLine.start.y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(transformedLine.end.x, transformedLine.end.y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Add labels for start/end points
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Draw "S" for start with stroke for visibility
+    ctx.strokeText('S', transformedLine.start.x, transformedLine.start.y);
+    ctx.fillText('S', transformedLine.start.x, transformedLine.start.y);
+    
+    // Draw "E" for end with stroke for visibility
+    ctx.strokeText('E', transformedLine.end.x, transformedLine.end.y);
+    ctx.fillText('E', transformedLine.end.x, transformedLine.end.y);
     
     // Calculate and draw perpendicular indicator (small line in the middle perpendicular to main line)
     const midX = (transformedLine.start.x + transformedLine.end.x) / 2;
@@ -762,46 +998,53 @@ const CameraComponent = React.forwardRef((props, ref) => {
     
     if (length > 0) {
       // Normalize and rotate 90 degrees
-      const perpX = -dy / length * 10; // 10px long
-      const perpY = dx / length * 10;
+      const perpX = -dy / length * 20; // Increased length to 20px
+      const perpY = dx / length * 20;
       
-      // Draw perpendicular line
+      // Draw perpendicular line with increased visibility
       ctx.beginPath();
       ctx.moveTo(midX - perpX, midY - perpY);
       ctx.lineTo(midX + perpX, midY + perpY);
-      ctx.strokeStyle = 'cyan';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; // Brighter cyan with higher opacity
+      ctx.lineWidth = 3; // Increase width
       ctx.stroke();
     }
   };
   
   // Calculate transformed line position based on sliders
   const calculateTransformedLinePosition = () => {
-    if (!isLineDrawn) return { start: lineStart, end: lineEnd };
+    if (!isLineDrawn) {
+      console.log('Not calculating transformed position - line not drawn');
+      return { start: lineStart, end: lineEnd };
+    }
     
+    console.log('Calculating transformed line position');
+    console.log('Original start:', originalLineStart, 'Original end:', originalLineEnd);
+    console.log('Offsets:', lineXOffset, lineYOffset);
+
     // Calculate the line center
     const centerX = (originalLineStart.x + originalLineEnd.x) / 2;
     const centerY = (originalLineStart.y + originalLineEnd.y) / 2;
     
-    // Convert rotation to radians
-    const radians = (lineRotation * Math.PI) / 180;
-    
-    // Transform start point
-    const startDX = originalLineStart.x - centerX;
-    const startDY = originalLineStart.y - centerY;
-    const rotatedStartX = centerX + startDX * Math.cos(radians) - startDY * Math.sin(radians);
-    const rotatedStartY = centerY + startDX * Math.sin(radians) + startDY * Math.cos(radians) + lineYOffset;
-    
-    // Transform end point
-    const endDX = originalLineEnd.x - centerX;
-    const endDY = originalLineEnd.y - centerY;
-    const rotatedEndX = centerX + endDX * Math.cos(radians) - endDY * Math.sin(radians);
-    const rotatedEndY = centerY + endDX * Math.sin(radians) + endDY * Math.cos(radians) + lineYOffset;
-    
-    return {
-      start: { x: rotatedStartX, y: rotatedStartY },
-      end: { x: rotatedEndX, y: rotatedEndY }
+    // No longer need rotation calculations
+    // Apply offsets directly to the original coordinates
+    const transformedStart = {
+      x: originalLineStart.x + lineXOffset,
+      y: originalLineStart.y + lineYOffset
     };
+    
+    const transformedEnd = {
+      x: originalLineEnd.x + lineXOffset,
+      y: originalLineEnd.y + lineYOffset
+    };
+    
+    const result = {
+      start: transformedStart,
+      end: transformedEnd
+    };
+    
+    console.log('Transformed result:', result);
+    return result;
   };
   
   // Handle line Y-offset adjustment
@@ -816,15 +1059,15 @@ const CameraComponent = React.forwardRef((props, ref) => {
         start: lineStart,
         end: lineEnd,
         yOffset: newOffset,
-        rotation: lineRotation
+        xOffset: lineXOffset
       });
     }
   };
   
-  // Handle line rotation adjustment
-  const handleLineRotationChange = (e) => {
-    const newRotation = parseInt(e.target.value);
-    setLineRotation(newRotation);
+  // Handle line X-offset adjustment
+  const handleLineXOffsetChange = (e) => {
+    const newOffset = parseInt(e.target.value);
+    setLineXOffset(newOffset);
     drawLine();
     
     // Notify parent about line data change
@@ -833,7 +1076,26 @@ const CameraComponent = React.forwardRef((props, ref) => {
         start: lineStart,
         end: lineEnd,
         yOffset: lineYOffset,
-        rotation: newRotation
+        xOffset: newOffset
+      });
+    }
+  };
+  
+  // Add effect to redraw line when parameters change
+  useEffect(() => {
+    if (isLineDrawn) {
+      drawLine();
+    }
+  }, [isLineDrawn, lineYOffset, lineXOffset]);
+  
+  // Helper to update parent component with line data
+  const updateParentLineData = () => {
+    if (onLineDataChange && isLineDrawn) {
+      onLineDataChange({
+        start: lineStart,
+        end: lineEnd,
+        yOffset: lineYOffset,
+        xOffset: lineXOffset
       });
     }
   };
@@ -845,8 +1107,14 @@ const CameraComponent = React.forwardRef((props, ref) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
-    // Draw the current video frame to the canvas (but don't display it)
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    // Create a temporary hidden canvas to avoid disturbing the main display
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    
+    // Draw the current video frame to the temp canvas (but don't display it)
+    tempCtx.drawImage(videoRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
     
     // Calculate line points to sample
     const dx = end.x - start.x;
@@ -869,11 +1137,11 @@ const CameraComponent = React.forwardRef((props, ref) => {
         const y = Math.round(start.y + dy * t);
         
         // Constrain to canvas boundaries
-        const boundedX = Math.max(0, Math.min(x, canvas.width - 1));
-        const boundedY = Math.max(0, Math.min(y, canvas.height - 1));
+        const boundedX = Math.max(0, Math.min(x, tempCanvas.width - 1));
+        const boundedY = Math.max(0, Math.min(y, tempCanvas.height - 1));
         
-        // Get pixel data at this position
-        const pixelData = ctx.getImageData(boundedX, boundedY, 1, 1).data;
+        // Get pixel data at this position from the temp canvas
+        const pixelData = tempCtx.getImageData(boundedX, boundedY, 1, 1).data;
         const [r, g, b] = pixelData;
         
         // Calculate intensity as simple float average (not weighted)
@@ -887,6 +1155,9 @@ const CameraComponent = React.forwardRef((props, ref) => {
         positions.push(i / samples); // Normalized position along line (0-1)
       }
       
+      // Clean up temporary canvas
+      tempCanvas.remove();
+      
       // Return structured data
       return {
         timestamp: Date.now(),
@@ -899,6 +1170,7 @@ const CameraComponent = React.forwardRef((props, ref) => {
       };
     } catch (error) {
       console.error('Error extracting pixel data:', error);
+      tempCanvas.remove();
       return null;
     }
   };
@@ -1029,6 +1301,26 @@ const CameraComponent = React.forwardRef((props, ref) => {
       </div>
     );
   };
+  
+  // Add a dedicated useEffect for periodic forced redraw to ensure line visibility
+  useEffect(() => {
+    if (!isLineDrawn || !isCameraActive) return;
+    
+    console.log('Setting up periodic redraw interval');
+    
+    // Force redraw every 500ms as a backup to ensure line remains visible
+    const intervalId = setInterval(() => {
+      if (isLineDrawn && canvasRef.current) {
+        console.log('Forced periodic redraw');
+        drawLine();
+      }
+    }, 500);
+    
+    return () => {
+      console.log('Clearing periodic redraw interval');
+      clearInterval(intervalId);
+    };
+  }, [isLineDrawn, isCameraActive]);
   
   const styles = {
     container: {
@@ -1212,6 +1504,88 @@ const CameraComponent = React.forwardRef((props, ref) => {
     }
   };
   
+  // Fix the function that handles the Extract button state change
+  const handleExtractToggle = () => {
+    setIsExtracting(!isExtracting);
+    
+    // Force redraw the line immediately after toggling extraction
+    // to ensure it remains visible
+    if (isLineDrawn) {
+      setTimeout(() => {
+        console.log('Redrawing line after extraction toggle');
+        drawLine();
+      }, 0);
+    }
+  };
+
+  // Camera controls section
+  const renderCameraControls = () => {
+    return (
+      <div style={styles.buttonRow}>
+        {!isCameraActive ? (
+          <button 
+            style={buttonVariants.smallPrimary}
+            onClick={startCamera}
+            disabled={!selectedCamera}
+          >
+            Start Camera
+          </button>
+        ) : (
+          <button 
+            style={buttonVariants.smallSecondary}
+            onClick={stopCamera}
+          >
+            Stop Camera
+          </button>
+        )}
+        
+        {isCameraActive && (
+          <>
+            {isLineDrawn ? (
+              <>
+                <button 
+                  style={buttonVariants.smallSecondary}
+                  onClick={clearLine}
+                >
+                  Clear Line
+                </button>
+                <button 
+                  style={{
+                    ...buttonVariants.smallSecondary,
+                    backgroundColor: isExtracting ? 'rgba(255, 0, 0, 0.5)' : undefined
+                  }}
+                  onClick={handleExtractToggle} // Use new handler function
+                  title={isExtracting ? "Stop extracting data" : "Start extracting data"}
+                >
+                  {isExtracting ? "Stop Extract" : "Start Extract"}
+                </button>
+              </>
+            ) : (
+              <button 
+                style={buttonVariants.smallSecondary}
+                disabled={isDrawingLine}
+                title="Click and drag on video to draw a line"
+              >
+                Draw Line
+              </button>
+            )}
+            
+            <button 
+              style={{
+                ...buttonVariants.smallSecondary,
+                ...styles.settingsButton,
+                backgroundColor: showCameraSettings ? 'rgba(0, 150, 150, 0.7)' : undefined
+              }}
+              onClick={() => setShowCameraSettings(!showCameraSettings)}
+            >
+              ⚙️ Camera Settings
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+  
   return (
     <div style={styles.container}>
       <h3 style={styles.title}>Camera Feed</h3>
@@ -1262,12 +1636,56 @@ const CameraComponent = React.forwardRef((props, ref) => {
         <canvas 
           ref={canvasRef}
           style={{
-            ...styles.canvas,
-            display: isCameraActive ? 'block' : 'none'
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 30, // Increase z-index further
+            pointerEvents: 'none' // Allow clicks to pass through
           }}
           width={cameraSize.width}
           height={cameraSize.height}
         />
+        
+        {/* Drawing mode indicator */}
+        {isCameraActive && !isLineDrawn && !isDrawingLine && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            fontSize: '14px',
+            zIndex: 25,
+            pointerEvents: 'none'
+          }}>
+            Click and drag to draw a line
+          </div>
+        )}
+        
+        {/* Line drawing indicator */}
+        {isDrawingLine && (
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(255, 255, 0, 0.8)',
+            color: 'black',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            zIndex: 25,
+            pointerEvents: 'none'
+          }}>
+            Drawing line...
+          </div>
+        )}
         
         {/* Resize info overlay */}
         {showResizeInfo && (
@@ -1294,68 +1712,7 @@ const CameraComponent = React.forwardRef((props, ref) => {
       </div>
       
       {/* Camera controls */}
-      <div style={styles.buttonRow}>
-        {!isCameraActive ? (
-          <button 
-            style={buttonVariants.smallPrimary}
-            onClick={startCamera}
-            disabled={!selectedCamera}
-          >
-            Start Camera
-          </button>
-        ) : (
-          <button 
-            style={buttonVariants.smallSecondary}
-            onClick={stopCamera}
-          >
-            Stop Camera
-          </button>
-        )}
-        
-        {isCameraActive && (
-          <>
-            {isLineDrawn ? (
-              <>
-                <button 
-                  style={buttonVariants.smallSecondary}
-                  onClick={clearLine}
-                >
-                  Clear Line
-                </button>
-                <button 
-                  style={{
-                    ...buttonVariants.smallSecondary,
-                    backgroundColor: isExtracting ? 'rgba(255, 0, 0, 0.5)' : undefined
-                  }}
-                  onClick={() => setIsExtracting(!isExtracting)}
-                  title={isExtracting ? "Stop extracting data" : "Start extracting data"}
-                >
-                  {isExtracting ? "Stop Extract" : "Start Extract"}
-                </button>
-              </>
-            ) : (
-              <button 
-                style={buttonVariants.smallSecondary}
-                disabled={isDrawingLine}
-                title="Click and drag on video to draw a line"
-              >
-                Draw Line
-              </button>
-            )}
-            
-            <button 
-              style={{
-                ...buttonVariants.smallSecondary,
-                ...styles.settingsButton,
-                backgroundColor: showCameraSettings ? 'rgba(0, 150, 150, 0.7)' : undefined
-              }}
-              onClick={() => setShowCameraSettings(!showCameraSettings)}
-            >
-              ⚙️ Camera Settings
-            </button>
-          </>
-        )}
-      </div>
+      {renderCameraControls()}
       
       {/* Line adjustment controls */}
       {isLineDrawn && (
@@ -1374,16 +1731,16 @@ const CameraComponent = React.forwardRef((props, ref) => {
           </div>
           
           <div style={styles.controlRow}>
-            <label style={styles.controlLabel}>Rotation:</label>
+            <label style={styles.controlLabel}>X Offset:</label>
             <input 
               type="range"
-              min="-90"
-              max="90"
-              value={lineRotation}
-              onChange={handleLineRotationChange}
+              min="-50"
+              max="50"
+              value={lineXOffset}
+              onChange={handleLineXOffsetChange}
               style={styles.slider}
             />
-            <span style={styles.value}>{lineRotation}°</span>
+            <span style={styles.value}>{lineXOffset}px</span>
           </div>
         </div>
       )}

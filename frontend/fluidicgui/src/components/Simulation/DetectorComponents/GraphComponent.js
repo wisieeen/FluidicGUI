@@ -25,6 +25,16 @@ const GraphComponent = React.forwardRef((props, ref) => {
   const [accumulatedData, setAccumulatedData] = useState(null);
   const [isAccumulating, setIsAccumulating] = useState(true);
   
+  // Export file name prefix
+  const [filePrefix, setFilePrefix] = useState('spectrum');
+  
+  // Status message for operations
+  const [saveMessage, setSaveMessage] = useState('');
+  
+  // Peak detection state
+  const [showPeakMarkers, setShowPeakMarkers] = useState(true);
+  const [peakCount, setPeakCount] = useState(3); // Default to showing top 3 peaks
+  
   // Calibration state
   const [showCalibration, setShowCalibration] = useState(false);
   const [calibrationPoints, setCalibrationPoints] = useState([
@@ -290,6 +300,95 @@ const GraphComponent = React.forwardRef((props, ref) => {
     }
   }, [graphSize, graphData, accumulatedData, isAccumulating, useCalibration, calibrationPoints, flipXAxis]);
   
+  // Find peaks in data array
+  const findPeaks = (values, positions, count = 3) => {
+    if (!values || values.length < 3) return [];
+    
+    // Find local maxima (points higher than both neighbors)
+    const peaks = [];
+    
+    for (let i = 1; i < values.length - 1; i++) {
+      if (values[i] > values[i - 1] && values[i] > values[i + 1]) {
+        // This is a local maximum
+        const peak = {
+          index: i,
+          position: positions[i],
+          value: values[i]
+        };
+        
+        // Refine position using quadratic interpolation for better accuracy
+        try {
+          // Based on three points around the peak
+          const x1 = positions[i-1];
+          const x2 = positions[i];
+          const x3 = positions[i+1];
+          const y1 = values[i-1];
+          const y2 = values[i];
+          const y3 = values[i+1];
+          
+          // Only apply refinement if we have valid neighboring points
+          const denom = (x1 - x2) * (x1 - x3) * (x2 - x3);
+          if (denom !== 0) {
+            // Quadratic interpolation formula
+            const A = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / denom;
+            const B = (x3*x3 * (y1 - y2) + x2*x2 * (y3 - y1) + x1*x1 * (y2 - y3)) / denom;
+            
+            // Calculate refined x position at the peak of the parabola
+            if (A !== 0) {
+              const refinedPos = -B / (2 * A);
+              
+              // Only use refined position if it's within a reasonable range
+              if (refinedPos >= x1 && refinedPos <= x3) {
+                peak.refinedPosition = refinedPos;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Error during peak refinement', e);
+          // If refinement fails, use the original position
+        }
+        
+        peaks.push(peak);
+      }
+    }
+    
+    // Sort peaks by value (descending)
+    peaks.sort((a, b) => b.value - a.value);
+    
+    // Filter peaks to ensure they're at least 10nm apart (or equivalent in position space)
+    const filteredPeaks = [];
+    
+    // Default position-based distance (approximately 5% of the position range)
+    const minPositionDistance = 0.05;
+    
+    for (const peak of peaks) {
+      // Check if this peak is too close to any already-selected stronger peak
+      let tooClose = false;
+      
+      for (const selectedPeak of filteredPeaks) {
+        // Use position-based distance (wavelength conversion will happen in the drawing code)
+        const distance = Math.abs(peak.position - selectedPeak.position);
+        
+        if (distance < minPositionDistance) {
+          tooClose = true;
+          break;
+        }
+      }
+      
+      // Add the peak if it's not too close to any stronger peak
+      if (!tooClose) {
+        filteredPeaks.push(peak);
+        
+        // Stop if we have enough peaks
+        if (filteredPeaks.length >= count) {
+          break;
+        }
+      }
+    }
+    
+    return filteredPeaks;
+  };
+  
   // Draw the graph based on pixel data
   const drawGraph = (data) => {
     if (!canvasRef.current || !data) return;
@@ -350,6 +449,9 @@ const GraphComponent = React.forwardRef((props, ref) => {
     const maxBlue = Math.max(...data.blue, 1);
     const maxIntensity = Math.max(...data.intensity, 1);
     
+    // Store the peak data for each displayed channel
+    const channelPeaks = {};
+    
     // Plot each enabled channel
     Object.entries(displayChannels).forEach(([channel, isEnabled]) => {
       if (!isEnabled) return;
@@ -390,6 +492,45 @@ const GraphComponent = React.forwardRef((props, ref) => {
       // Draw the path
       ctx.stroke();
     });
+    
+    // Detect peaks for intensity channel only if enabled
+    if (showPeakMarkers && displayChannels.intensity) {
+      const intensityValues = data.intensity;
+      // Use original positions for peak detection
+      const peaks = findPeaks(intensityValues, data.positions, peakCount);
+      
+      // If calibration is enabled, perform additional wavelength-based filtering
+      if (useCalibration) {
+        // Convert positions to wavelengths and filter to ensure 10nm minimum distance
+        const wavelengthPeaks = [];
+        
+        // Process peaks in order of intensity (already sorted by findPeaks)
+        for (const peak of peaks) {
+          const peakWavelength = positionToWavelength(peak.position);
+          let tooClose = false;
+          
+          // Check if this peak is too close to any already selected peak
+          for (const selectedPeak of wavelengthPeaks) {
+            const selectedWavelength = positionToWavelength(selectedPeak.position);
+            const distance = Math.abs(peakWavelength - selectedWavelength);
+            
+            if (distance < 10) { // 10nm minimum distance
+              tooClose = true;
+              break;
+            }
+          }
+          
+          // Add the peak if it's not too close to any already selected peak
+          if (!tooClose) {
+            wavelengthPeaks.push(peak);
+          }
+        }
+        
+        channelPeaks['intensity'] = wavelengthPeaks;
+      } else {
+        channelPeaks['intensity'] = peaks;
+      }
+    }
     
     // Draw timestamp and status information
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -486,6 +627,127 @@ const GraphComponent = React.forwardRef((props, ref) => {
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`${point.wavelength}nm`, x, height - 20); // Higher position to avoid overlap
+      });
+    }
+    
+    // Draw peak markers if enabled
+    if (showPeakMarkers) {
+      // Draw peaks for each enabled channel
+      Object.entries(channelPeaks).forEach(([channel, peaks]) => {
+        // Use the same color as the channel with increased opacity
+        const baseColor = styles[channel].color;
+        const markerColor = baseColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+        
+        // Get max value for this channel for y-coordinate calculation
+        const maxValue = channel === 'red' ? maxRed : 
+                        channel === 'green' ? maxGreen : 
+                        channel === 'blue' ? maxBlue : maxIntensity;
+        
+        peaks.forEach(peak => {
+          // Get the original position
+          let xPos = peak.position;
+          
+          // Use refined position if available (within reasonable bounds)
+          if (peak.refinedPosition !== undefined) {
+            xPos = peak.refinedPosition;
+          }
+          
+          // Apply flip if enabled
+          if (flipXAxis) {
+            xPos = 1 - xPos;
+          }
+          
+          // Convert to pixel coordinates
+          const x = xPos * width;
+          const y = height - (peak.value / maxValue) * height;
+          
+          // Check if peak is near the top of the graph (below a minimum distance from top)
+          const isNearTop = y < 60; // 60px from top
+          
+          // Draw a vertical line first (always visible)
+          ctx.strokeStyle = markerColor;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          
+          // Draw marker at peak position (triangle pointing down or up based on position)
+          ctx.fillStyle = markerColor;
+          ctx.beginPath();
+          
+          if (isNearTop) {
+            // If near top, draw triangle pointing up from a position slightly below the peak
+            const markerY = y + 15;
+            ctx.moveTo(x, markerY);  
+            ctx.lineTo(x - 5, markerY + 10);
+            ctx.lineTo(x + 5, markerY + 10);
+          } else {
+            // Normal case - draw triangle pointing down
+            ctx.moveTo(x, y);  
+            ctx.lineTo(x - 5, y - 10);
+            ctx.lineTo(x + 5, y - 10);
+          }
+          ctx.closePath();
+          ctx.fill();
+          
+          // Prepare label text
+          let label;
+          if (useCalibration) {
+            const wavelength = positionToWavelength(peak.position);
+            label = `${wavelength.toFixed(1)}nm`;
+          } else {
+            label = `Pos: ${peak.position.toFixed(3)}`;
+          }
+          
+          const valueLabel = `I: ${peak.value.toFixed(1)}`;
+          
+          // Setup text rendering
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          
+          // Measure text dimensions for backgrounds
+          const textWidth = ctx.measureText(label).width + 6;
+          const valueWidth = ctx.measureText(valueLabel).width + 6;
+          
+          if (isNearTop) {
+            // Draw position/wavelength label below the marker
+            const labelY = y + 30;
+            
+            // Draw text background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(x - textWidth/2, labelY - 10, textWidth, 16);
+            
+            // Draw label text
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillText(label, x, labelY);
+            
+            // Draw value label below that
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(x - valueWidth/2, labelY + 7, valueWidth, 16);
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillText(valueLabel, x, labelY + 17);
+          } else {
+            // Standard label position above marker
+            // Draw text background for better readability
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(x - textWidth/2, y - 25, textWidth, 16);
+            
+            // Draw label above marker
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillText(label, x, y - 14);
+            
+            // Draw peak value
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(x - valueWidth/2, y - 42, valueWidth, 16);
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillText(valueLabel, x, y - 31);
+          }
+        });
       });
     }
     
@@ -693,6 +955,122 @@ const GraphComponent = React.forwardRef((props, ref) => {
     // Attach handlers to document to capture events outside component
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  // Export settings to JSON file
+  const exportSettings = () => {
+    try {
+      // ...existing code...
+    } catch (error) {
+      console.error('Failed to export settings:', error);
+      setSaveMessage('Error exporting settings');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+  
+  // Export graph data as text file
+  const exportGraphData = () => {
+    // Make sure we have data to export
+    const dataToExport = isAccumulating ? accumulatedData : graphData;
+    
+    if (!dataToExport) {
+      console.warn('No data to export');
+      if (props.onMessage) {
+        props.onMessage('No data to export');
+      }
+      return;
+    }
+    
+    try {
+      const lines = [];
+      
+      // Loop through data points
+      for (let i = 0; i < dataToExport.positions.length; i++) {
+        let position = dataToExport.positions[i];
+        // Convert position to wavelength if calibration is enabled
+        let wavelength = position;
+        if (useCalibration) {
+          wavelength = positionToWavelength(position);
+        }
+        
+        // Get intensity value
+        const intensity = dataToExport.intensity[i];
+        
+        // Add line with wavelength;intensity format
+        lines.push(`${wavelength.toFixed(2)};${intensity.toFixed(2)}`);
+      }
+      
+      // Join lines with newlines
+      const content = lines.join('\n');
+      
+      // Create a timestamp string in format YYYYMMDDhhmmss
+      const now = new Date();
+      const timestamp = now.getFullYear() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0');
+      
+      // Create filename with prefix and timestamp
+      const fileName = `${filePrefix}_${timestamp}.txt`;
+      
+      // Create Blob with content
+      const blob = new Blob([content], { type: 'text/plain' });
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      
+      // Append to document, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      // Show success message
+      if (props.onMessage) {
+        props.onMessage(`Data exported as ${fileName}`);
+      } else {
+        // If no message handler provided, show alert
+        console.log(`Data exported as ${fileName}`);
+        setSaveMessage && setSaveMessage(`Data exported as ${fileName}`);
+        setTimeout(() => setSaveMessage && setSaveMessage(''), 3000);
+      }
+      
+    } catch (error) {
+      console.error('Failed to export graph data:', error);
+      if (props.onMessage) {
+        props.onMessage('Error exporting data');
+      } else {
+        setSaveMessage && setSaveMessage('Error exporting data');
+        setTimeout(() => setSaveMessage && setSaveMessage(''), 3000);
+      }
+    }
+  };
+  
+  // Load saved camera and calibration settings
+  const loadSettings = () => {
+    // ... existing code ...
+  };
+  
+  // Handle peak count change
+  const handlePeakCountChange = (e) => {
+    const count = parseInt(e.target.value);
+    if (!isNaN(count) && count >= 0 && count <= 10) {
+      setPeakCount(count);
+    }
+  };
+  
+  // Toggle peak markers
+  const togglePeakMarkers = () => {
+    setShowPeakMarkers(!showPeakMarkers);
   };
   
   const styles = {
@@ -923,6 +1301,76 @@ const GraphComponent = React.forwardRef((props, ref) => {
         >
           {isAccumulating ? "Accumulating" : "Live"}
         </button>
+        
+        {/* Peak markers control */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '5px',
+          marginLeft: '20px',
+          borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
+          paddingLeft: '10px'
+        }}>
+          <div style={styles.frameCountLabel}>Peak markers:</div>
+          <input 
+            type="number" 
+            min="0" 
+            max="10"
+            value={peakCount}
+            onChange={handlePeakCountChange}
+            style={styles.frameCountInput}
+            title="Number of peak markers to display"
+          />
+          <button 
+            style={{
+              ...buttonVariants.smallIconButton,
+              backgroundColor: showPeakMarkers ? 'rgba(120, 120, 220, 0.7)' : undefined
+            }}
+            onClick={togglePeakMarkers}
+            title={showPeakMarkers ? "Hide peak markers" : "Show peak markers"}
+          >
+            {showPeakMarkers ? "Peaks On" : "Peaks Off"}
+          </button>
+        </div>
+        
+        {/* Add export controls */}
+        <div style={{ display: 'flex', marginLeft: 'auto', alignItems: 'center', gap: '5px' }}>
+          <input
+            type="text"
+            value={filePrefix}
+            onChange={(e) => setFilePrefix(e.target.value)}
+            placeholder="File prefix"
+            style={{
+              ...styles.frameCountInput,
+              width: '100px'
+            }}
+            title="Prefix for the exported data filename"
+          />
+          <button
+            style={{
+              ...buttonVariants.smallSecondary,
+              backgroundColor: 'rgba(20, 120, 220, 0.7)'
+            }}
+            onClick={exportGraphData}
+            title="Export graph data as text file"
+            disabled={!graphData && !accumulatedData}
+          >
+            💾 Export Data
+          </button>
+          
+          {saveMessage && (
+            <span style={{
+              fontSize: '11px',
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 6px',
+              borderRadius: '3px',
+              marginLeft: '5px',
+              color: 'rgba(255, 255, 255, 0.9)'
+            }}>
+              {saveMessage}
+            </span>
+          )}
+        </div>
       </div>
       
       {showCalibration && (

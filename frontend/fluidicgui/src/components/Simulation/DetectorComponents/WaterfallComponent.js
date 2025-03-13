@@ -69,6 +69,12 @@ const WaterfallComponent = ({
   const [activeChannel, setActiveChannel] = useState('intensity'); // Options: 'red', 'green', 'blue', 'intensity'
   const [internalColorScale, setInternalColorScale] = useState('thermal'); // Options: 'thermal', 'rainbow', 'grayscale'
   
+  // Export file name prefix
+  const [filePrefix, setFilePrefix] = useState('waterfall');
+  
+  // Status message for operations
+  const [saveMessage, setSaveMessage] = useState('');
+  
   // Use external color scale if provided, otherwise use internal state
   const colorScale = externalColorScale !== undefined ? externalColorScale : internalColorScale;
   
@@ -241,18 +247,62 @@ const WaterfallComponent = ({
       // Calculate Y position for this row (newest data at top)
       const y = frameIndex * rowHeight;
       
-      // Create a row image by coloring each pixel based on its value
-      for (let i = 0; i < values.length; i++) {
-        const value = values[i];
-        const normalizedValue = (value - minVal) / (maxVal - minVal); // 0 to 1
-        const x = Math.floor(positions[i] * width);
+      // Create an image data for smooth rendering
+      const imageData = ctx.createImageData(width, Math.ceil(rowHeight));
+      const data = imageData.data;
+      
+      // For each horizontal pixel in the image data
+      for (let x = 0; x < width; x++) {
+        // Map the x coordinate back to a position in the spectral data
+        const position = x / width;
         
-        // Get color for this value based on selected color scale
-        const color = getColorForValue(normalizedValue, colorScale);
+        // Find the two closest data points for interpolation
+        let leftIndex = 0;
+        let rightIndex = positions.length - 1;
         
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, 1, rowHeight);
+        // Find the data points that surround this position
+        for (let i = 0; i < positions.length - 1; i++) {
+          if (positions[i] <= position && positions[i+1] > position) {
+            leftIndex = i;
+            rightIndex = i + 1;
+            break;
+          }
+        }
+        
+        // Calculate interpolation factor between the two points
+        let factor = 0;
+        if (positions[rightIndex] !== positions[leftIndex]) {
+          factor = (position - positions[leftIndex]) / (positions[rightIndex] - positions[leftIndex]);
+        }
+        
+        // Interpolate the value
+        const leftValue = values[leftIndex];
+        const rightValue = values[rightIndex];
+        const interpolatedValue = leftValue + (rightValue - leftValue) * factor;
+        
+        // Normalize the interpolated value
+        const normalizedValue = (interpolatedValue - minVal) / (maxVal - minVal);
+        
+        // Get color for this value
+        const colorStr = getColorForValue(normalizedValue, colorScale);
+        // Convert the rgb string to components
+        const rgbMatch = colorStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        const r = parseInt(rgbMatch[1], 10);
+        const g = parseInt(rgbMatch[2], 10);
+        const b = parseInt(rgbMatch[3], 10);
+        
+        // Fill the entire column for this row with the color
+        for (let yOffset = 0; yOffset < Math.ceil(rowHeight); yOffset++) {
+          const pixelIndex = (yOffset * width + x) * 4;
+          data[pixelIndex] = r;     // R
+          data[pixelIndex + 1] = g; // G
+          data[pixelIndex + 2] = b; // B
+          data[pixelIndex + 3] = 255; // Alpha (fully opaque)
+        }
       }
+      
+      // Put the image data on the canvas
+      ctx.putImageData(imageData, 0, y);
     });
     
     // Draw time scale on the right
@@ -479,6 +529,94 @@ const WaterfallComponent = ({
     setAccumulatedFrames([]);
   };
   
+  // Export waterfall data as text file
+  const exportWaterfallData = () => {
+    // Make sure we have data to export
+    if (!historyData || historyData.length === 0) {
+      console.warn('No data to export');
+      setSaveMessage('No data to export');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+    
+    try {
+      // Create content with header
+      let content = `# Waterfall Data Export\n`;
+      content += `# Channel: ${activeChannel}\n`;
+      content += `# Timestamp: ${new Date().toISOString()}\n`;
+      content += `# Color Scale: ${colorScale}\n`;
+      content += `# Format: wavelength;frame1;frame2;frame3;...\n`;
+      content += `# Each row contains one wavelength position with intensity values from all frames\n\n`;
+      
+      // Determine how many data points are in each frame (assume consistent)
+      const pointsPerFrame = historyData[0]?.positions?.length || 0;
+      
+      if (pointsPerFrame === 0) {
+        throw new Error('Invalid data format');
+      }
+      
+      // For each wavelength position
+      for (let posIndex = 0; posIndex < pointsPerFrame; posIndex++) {
+        // Get the wavelength/position value from the first frame
+        // (assuming positions are consistent across frames)
+        const wavelength = historyData[0].positions[posIndex];
+        
+        // Start with the wavelength
+        let line = `${wavelength.toFixed(4)}`;
+        
+        // Add intensity from each frame for this position
+        for (let frameIndex = 0; frameIndex < historyData.length; frameIndex++) {
+          const frame = historyData[frameIndex];
+          const intensity = frame[activeChannel][posIndex];
+          line += `;${intensity.toFixed(2)}`;
+        }
+        
+        // Add the completed line
+        content += line + '\n';
+      }
+      
+      // Create a timestamp string in format YYYYMMDDhhmmss
+      const now = new Date();
+      const timestamp = now.getFullYear() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0');
+      
+      // Create filename with prefix and timestamp
+      const fileName = `${filePrefix}_${timestamp}.txt`;
+      
+      // Create Blob with content
+      const blob = new Blob([content], { type: 'text/plain' });
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      
+      // Append to document, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      // Show success message
+      setSaveMessage(`Data exported as ${fileName}`);
+      setTimeout(() => setSaveMessage(''), 3000);
+      
+    } catch (error) {
+      console.error('Failed to export waterfall data:', error);
+      setSaveMessage('Error exporting data');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+  
   // Similar resize functionality as before
   const handleResizeStart = (e) => {
     e.preventDefault();
@@ -658,6 +796,55 @@ const WaterfallComponent = ({
             🗑️
           </button>
         </div>
+      </div>
+      
+      {/* Export controls */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '5px',
+        marginBottom: '10px'
+      }}>
+        <input
+          type="text"
+          value={filePrefix}
+          onChange={(e) => setFilePrefix(e.target.value)}
+          placeholder="File prefix"
+          style={{
+            padding: '2px 4px',
+            backgroundColor: 'rgba(30, 30, 30, 0.8)',
+            color: 'white',
+            border: '1px solid rgba(80, 80, 80, 0.5)',
+            borderRadius: '3px',
+            fontSize: '12px',
+            width: '100px'
+          }}
+          title="Prefix for the exported data filename"
+        />
+        <button
+          style={{
+            ...buttonVariants.smallSecondary,
+            backgroundColor: 'rgba(20, 120, 220, 0.7)'
+          }}
+          onClick={exportWaterfallData}
+          title="Export waterfall data as text file"
+          disabled={!historyData || historyData.length === 0}
+        >
+          💾 Export Data
+        </button>
+        
+        {saveMessage && (
+          <span style={{
+            fontSize: '11px',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            padding: '2px 6px',
+            borderRadius: '3px',
+            marginLeft: '5px',
+            color: 'rgba(255, 255, 255, 0.9)'
+          }}>
+            {saveMessage}
+          </span>
+        )}
       </div>
       
       {/* Color scheme selector dropdown */}
