@@ -42,6 +42,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(4000, () => {
-  console.log('WebSocket server running on port 4000');
+server.listen(4000, '0.0.0.0', () => {
+  console.log('WebSocket server running on port 4000 (accessible from network)');
 });

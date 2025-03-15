@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { convertToHardwareValuesPump, createPumpCommand } from '../../../utils/pumpCalculations';
 import { useButtonStyles } from '../../../styles/ButtonStyleProvider';
+import { WS_URL } from '../../../config';
 
 const PumpActions = ({ node, nodes = [], edges = [], onAction }) => {
   const [volume, setVolume] = useState('');
@@ -26,7 +27,7 @@ const PumpActions = ({ node, nodes = [], edges = [], onAction }) => {
 
   useEffect(() => {
     // Create WebSocket connection
-    const websocket = new WebSocket('ws://localhost:4000');
+    const websocket = new WebSocket(WS_URL);
     
     websocket.onopen = () => {
       console.log('Connected to WebSocket server');

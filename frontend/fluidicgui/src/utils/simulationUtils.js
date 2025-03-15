@@ -311,12 +311,22 @@ export const sendEventsToDevices = (pumpEvents, ws, nodes) => {
     return;
   }
 
+  if (!pumpEvents || !Array.isArray(pumpEvents) || pumpEvents.length === 0) {
+    console.error('No pump events to send');
+    return;
+  }
+
+  console.log('Sending events to devices:', pumpEvents);
+
   // Group events by device
   const deviceEvents = new Map();
 
   pumpEvents.forEach(event => {
     const node = nodes.find(n => n.id === event.target);
-    if (!node || !node.data?.MQTTname) return;
+    if (!node || !node.data?.MQTTname) {
+      console.error('No MQTTname found for node:', node);
+      return;
+    }
 
     if (!deviceEvents.has(node.data.MQTTname)) {
       deviceEvents.set(node.data.MQTTname, []);
@@ -334,6 +344,7 @@ export const sendEventsToDevices = (pumpEvents, ws, nodes) => {
   });
 
   let deviceEntries = Array.from(deviceEvents.entries());
+  console.log('Device events:', deviceEntries);
 
   deviceEntries.forEach(([deviceName, events]) => {
     for (let i = events.length - 1; i > 0; i--) {
@@ -349,34 +360,43 @@ export const sendEventsToDevices = (pumpEvents, ws, nodes) => {
 
     const sendChunks = async () => {
       if (chunks.length > 0) {
-        const firstMessage = {
-          topic: `${deviceName}/new_program`,
-          payload: chunks[0]
-        };
-        ws.send(JSON.stringify(firstMessage));
-
-        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-        for (let i = 1; i < chunks.length; i++) {
-          await delay(2);
-          const message = {
-            topic: `${deviceName}/continue_program`,
-            payload: chunks[i]
+        try {
+          const firstMessage = {
+            topic: `${deviceName}/new_program`,
+            payload: chunks[0]
           };
-          ws.send(JSON.stringify(message));
+          console.log('Sending new program to device:', deviceName, firstMessage);
+          ws.send(JSON.stringify(firstMessage));
+
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+          for (let i = 1; i < chunks.length; i++) {
+            await delay(2);
+            const message = {
+              topic: `${deviceName}/continue_program`,
+              payload: chunks[i]
+            };
+            console.log('Sending continue program to device:', deviceName, message);
+            ws.send(JSON.stringify(message));
+          }
+
+          await delay(2);
+
+          const runMessage = {
+            topic: `${deviceName}/${deviceIndex === 0 ? 'run_master' : 'run_slave'}`,
+            payload: "run"
+          };
+          console.log('Sending run command to device:', deviceName, runMessage);
+          ws.send(JSON.stringify(runMessage));
+        } catch (error) {
+          console.error('Error sending messages to device:', deviceName, error);
         }
-
-        await delay(2);
-
-        const runMessage = {
-          topic: `${deviceName}/${deviceIndex === 0 ? 'run_master' : 'run_slave'}`,
-          payload: "run"
-        };
-        ws.send(JSON.stringify(runMessage));
       }
     };
 
-    sendChunks();
+    sendChunks().catch(error => {
+      console.error('Error in sendChunks:', error);
+    });
   });
 };
 

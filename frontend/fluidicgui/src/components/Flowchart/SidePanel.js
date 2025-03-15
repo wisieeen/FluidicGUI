@@ -3,6 +3,7 @@ import { useReactFlow } from 'react-flow-renderer';
 import defaultProperties from '../../data/defaultProperties.json';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
+import { WS_URL } from '../../config';
 
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
@@ -23,7 +24,7 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
 
   // Set up a local WebSocket connection
   useEffect(() => {
-    const websocket = new WebSocket('ws://localhost:4000');
+    const websocket = new WebSocket(WS_URL);
     
     websocket.onopen = () => {
       console.log('SidePanel connected to WebSocket server');

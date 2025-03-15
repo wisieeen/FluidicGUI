@@ -11,6 +11,7 @@ import Simulation from './components/Simulation/Simulation';
 import NavigationBar from './components/Navigation/NavigationBar';
 import { ButtonColorSchemeProvider } from './context/ColorSchemeContext';
 import { ButtonStyleProvider } from './styles/ButtonStyleProvider';
+import { WS_URL } from './config';
 
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
@@ -30,7 +31,7 @@ const App = () => {
 
   useEffect(() => {
     // Create WebSocket connection
-    const websocket = new WebSocket('ws://localhost:4000');
+    const websocket = new WebSocket(WS_URL);
     
     websocket.onopen = () => {
       console.log('Connected to WebSocket server');

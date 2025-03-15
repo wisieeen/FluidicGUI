@@ -22,6 +22,7 @@ import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
 import NewDetectorPanel from './NewDetectorPanel';
 import { convertDetectorReading } from '../../utils/detectorCalculations';
+import { WS_URL } from '../../config';
 
 const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPumps = [], onBack, onNext }) => {
   const buttonVariants = useButtonStyles();
@@ -54,7 +55,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
 
   useEffect(() => {
     // Create WebSocket connection
-    const websocket = new WebSocket('ws://localhost:4000');
+    const websocket = new WebSocket(WS_URL);
     
     websocket.onopen = () => {
       console.log('Connected to WebSocket server');
