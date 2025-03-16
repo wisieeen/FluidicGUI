@@ -984,6 +984,12 @@ const GraphComponent = React.forwardRef((props, ref) => {
     try {
       const lines = [];
       
+      // Add column headers as first line
+      const headers = useCalibration ? 
+        "Wavelength (nm);Intensity;Red;Green;Blue" : 
+        "Position;Intensity;Red;Green;Blue";
+      lines.push(headers);
+      
       // Loop through data points
       for (let i = 0; i < dataToExport.positions.length; i++) {
         let position = dataToExport.positions[i];
@@ -993,11 +999,14 @@ const GraphComponent = React.forwardRef((props, ref) => {
           wavelength = positionToWavelength(position);
         }
         
-        // Get intensity value
+        // Get all channel values
         const intensity = dataToExport.intensity[i];
+        const red = dataToExport.red[i];
+        const green = dataToExport.green[i];
+        const blue = dataToExport.blue[i];
         
-        // Add line with wavelength;intensity format
-        lines.push(`${wavelength.toFixed(2)};${intensity.toFixed(2)}`);
+        // Add line with all values
+        lines.push(`${wavelength.toFixed(2)};${intensity.toFixed(2)};${red.toFixed(2)};${green.toFixed(2)};${blue.toFixed(2)}`);
       }
       
       // Join lines with newlines
