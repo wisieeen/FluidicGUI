@@ -206,8 +206,8 @@ const PumpActions = ({ node, nodes = [], edges = [], onAction }) => {
       }
 
       const params = {
-        volume: parseFloat(volume),
-        speed: parseFloat(speed)
+        volume: parseFloat(volume) * (pumpMultipliers[selectedNode.id] || 1),
+        speed: parseFloat(speed) * (pumpMultipliers[selectedNode.id] || 1)
       };
 
       const moveCommand = createPumpCommand(params, selectedNode.data.properties);
@@ -274,8 +274,8 @@ const PumpActions = ({ node, nodes = [], edges = [], onAction }) => {
       const strokeVolumeInMm3 = strokeLengthInMm * area;
       
       const params = {
-        volume: strokeVolumeInMm3, // Now in mm
-        speed: speed // Now in mm/s
+        volume: strokeVolumeInMm3 * (pumpMultipliers[selectedNode.id] || 1), // Now in mm
+        speed: speed * (pumpMultipliers[selectedNode.id] || 1) // Now in mm/s
       };
 
       const moveCommand = createPumpCommand(params, selectedNode.data.properties);
