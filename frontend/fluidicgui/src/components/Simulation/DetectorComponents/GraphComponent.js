@@ -27,6 +27,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
   
   // Export file name prefix
   const [filePrefix, setFilePrefix] = useState('spectrum');
+  const [includeDateInFilename, setIncludeDateInFilename] = useState(true);
   
   // Status message for operations
   const [saveMessage, setSaveMessage] = useState('');
@@ -1021,8 +1022,10 @@ const GraphComponent = React.forwardRef((props, ref) => {
         String(now.getMinutes()).padStart(2, '0') +
         String(now.getSeconds()).padStart(2, '0');
       
-      // Create filename with prefix and timestamp
-      const fileName = `${filePrefix}_${timestamp}.txt`;
+      // Create filename with prefix and optional timestamp
+      const fileName = includeDateInFilename ? 
+        `${filePrefix}_${timestamp}.txt` : 
+        `${filePrefix}.txt`;
       
       // Create Blob with content
       const blob = new Blob([content], { type: 'text/plain' });
@@ -1355,6 +1358,22 @@ const GraphComponent = React.forwardRef((props, ref) => {
             }}
             title="Prefix for the exported data filename"
           />
+          <label style={{ 
+            fontSize: '11px', 
+            color: 'rgba(255, 255, 255, 0.7)', 
+            display: 'flex', 
+            alignItems: 'center',
+            gap: '3px',
+            marginRight: '5px'
+          }}>
+            <input 
+              type="checkbox" 
+              checked={includeDateInFilename}
+              onChange={(e) => setIncludeDateInFilename(e.target.checked)}
+              style={{ margin: 0 }}
+            />
+            Date
+          </label>
           <button
             style={{
               ...buttonVariants.smallSecondary,
