@@ -8,9 +8,9 @@ const GraphComponent = React.forwardRef((props, ref) => {
   const [isResizing, setIsResizing] = useState(false);
   const [showResizeInfo, setShowResizeInfo] = useState(false);
   const [displayChannels, setDisplayChannels] = useState({
-    red: true,
-    green: true,
-    blue: true,
+    red: false,
+    green: false,
+    blue: false,
     intensity: true
   });
   const [graphData, setGraphData] = useState(null);
