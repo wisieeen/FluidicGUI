@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useButtonColorScheme, buttonColorSchemeOptions, ColorSchemePreview } from '../../context/ColorSchemeContext';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
+import Settings from '../Settings/Settings';
 
 const NavigationBar = ({ currentStep, onNavigate }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorMenuOpen, setColorMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const menuRef = useRef(null);
   const colorMenuRef = useRef(null);
   const { buttonColorScheme, updateButtonColorScheme } = useButtonColorScheme();
@@ -141,102 +143,116 @@ const NavigationBar = ({ currentStep, onNavigate }) => {
   };
 
   return (
-    <div style={styles.navbar}>
-      {/* First button */}
-      <button
-        key={buttons[0].step}
-        onClick={() => onNavigate(buttons[0].step)}
-        style={{
-          ...buttonVariants.secondaryButton,
-          ...(currentStep === buttons[0].step ? {
-            backgroundColor: '#555',
-            border: '1px solid #8c8',
-            boxShadow: '0 0 5px #8c8'
-          } : {})
-        }}
-        disabled={currentStep === buttons[0].step}
-      >
-        {buttons[0].label}
-      </button>
-
-      {/* Plus button with dropdown */}
-      <div ref={menuRef} style={{ position: 'relative' }}>
-        <button 
-          style={styles.plusButton}
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          +
-        </button>
-        <div style={styles.contextMenu}>
-          <div 
-            style={styles.menuItem} 
-            onClick={() => handleMenuItemClick(4)} // Using step 4 for Response Surface Methodology
-          >
-            Response surface methodology
-          </div>
-          <div 
-            style={styles.menuItem} 
-            onClick={() => handleMenuItemClick(8)} // Using step 8 for Interpolation Generator
-          >
-            Parameter Interpolation
-          </div>
-        </div>
-      </div>
-
-      {/* Remaining buttons */}
-      {buttons.slice(1).map(({ step, label }) => (
+    <>
+      <div style={styles.navbar}>
+        {/* First button */}
         <button
-          key={step}
-          onClick={() => onNavigate(step)}
+          key={buttons[0].step}
+          onClick={() => onNavigate(buttons[0].step)}
           style={{
             ...buttonVariants.secondaryButton,
-            ...(currentStep === step ? {
+            ...(currentStep === buttons[0].step ? {
               backgroundColor: '#555',
               border: '1px solid #8c8',
               boxShadow: '0 0 5px #8c8'
             } : {})
           }}
-          disabled={currentStep === step}
+          disabled={currentStep === buttons[0].step}
         >
-          {label}
+          {buttons[0].label}
         </button>
-      ))}
 
-      {/* Color scheme button with dropdown */}
-      <div ref={colorMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
-        <button 
-          style={styles.colorButton}
-          onClick={() => setColorMenuOpen(!colorMenuOpen)}
-        >
-          <span>Button Colors</span>
-          <div style={{...styles.colorIcon, ...getColorIconStyle(buttonColorScheme)}}></div>
-        </button>
-        <div style={styles.colorMenu}>
-          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: 'bold' }}>
-            Select Button Color Scheme
-          </div>
-          
-          {Object.entries(buttonColorSchemeOptions).map(([key, label]) => (
+        {/* Plus button with dropdown */}
+        <div ref={menuRef} style={{ position: 'relative' }}>
+          <button 
+            style={styles.plusButton}
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            +
+          </button>
+          <div style={styles.contextMenu}>
             <div 
-              key={key}
-              style={{
-                ...styles.colorMenuItem,
-                backgroundColor: key === buttonColorScheme ? '#555' : 'transparent'
-              }}
-              onClick={() => handleColorSchemeChange(key)}
+              style={styles.menuItem} 
+              onClick={() => handleMenuItemClick(4)} // Using step 4 for Response Surface Methodology
             >
-              <div style={styles.previewContainer}>
-                <div>{label}</div>
-                <ColorSchemePreview scheme={key} width="100%" />
-              </div>
-              {key === buttonColorScheme && (
-                <span>✓</span>
-              )}
+              Response surface methodology
             </div>
-          ))}
+            <div 
+              style={styles.menuItem} 
+              onClick={() => handleMenuItemClick(8)} // Using step 8 for Interpolation Generator
+            >
+              Parameter Interpolation
+            </div>
+          </div>
         </div>
+
+        {/* Remaining buttons */}
+        {buttons.slice(1).map(({ step, label }) => (
+          <button
+            key={step}
+            onClick={() => onNavigate(step)}
+            style={{
+              ...buttonVariants.secondaryButton,
+              ...(currentStep === step ? {
+                backgroundColor: '#555',
+                border: '1px solid #8c8',
+                boxShadow: '0 0 5px #8c8'
+              } : {})
+            }}
+            disabled={currentStep === step}
+          >
+            {label}
+          </button>
+        ))}
+
+        {/* Color scheme button with dropdown */}
+        <div ref={colorMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button 
+            style={styles.colorButton}
+            onClick={() => setColorMenuOpen(!colorMenuOpen)}
+          >
+            <span>Button Colors</span>
+            <div style={{...styles.colorIcon, ...getColorIconStyle(buttonColorScheme)}}></div>
+          </button>
+          <div style={styles.colorMenu}>
+            <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: 'bold' }}>
+              Select Button Color Scheme
+            </div>
+            
+            {Object.entries(buttonColorSchemeOptions).map(([key, label]) => (
+              <div 
+                key={key}
+                style={{
+                  ...styles.colorMenuItem,
+                  backgroundColor: key === buttonColorScheme ? '#555' : 'transparent'
+                }}
+                onClick={() => handleColorSchemeChange(key)}
+              >
+                <div style={styles.previewContainer}>
+                  <div>{label}</div>
+                  <ColorSchemePreview scheme={key} width="100%" />
+                </div>
+                {key === buttonColorScheme && (
+                  <span>✓</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Settings button */}
+        <button
+          style={{
+            ...buttonVariants.secondaryButton,
+            marginLeft: '10px',
+          }}
+          onClick={() => setSettingsOpen(true)}
+        >
+          ⚙️
+        </button>
       </div>
-    </div>
+      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 };
 
