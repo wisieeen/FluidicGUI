@@ -1,39 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
+import { useLocalStorage } from '../../utils/localStorageUtils';
 
-// Settings keys in localStorage
+// Settings key in localStorage
 const SETTINGS_STORAGE_KEY = 'fluidicgui_settings';
-
-// Create a custom hook for managing settings with localStorage
-const usePersistedSettings = (initialSettings) => {
-  // First try to load from localStorage
-  const loadInitialSettings = () => {
-    try {
-      const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (savedSettings) {
-        console.log('Loading saved settings:', JSON.parse(savedSettings));
-        return JSON.parse(savedSettings);
-      }
-    } catch (err) {
-      console.error('Error loading settings from localStorage:', err);
-    }
-    return initialSettings;
-  };
-
-  const [settings, setSettings] = useState(loadInitialSettings);
-
-  // Save to localStorage whenever settings change
-  useEffect(() => {
-    try {
-      console.log('Saving settings to localStorage:', settings);
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    } catch (err) {
-      console.error('Error saving settings to localStorage:', err);
-    }
-  }, [settings]);
-
-  return [settings, setSettings];
-};
 
 const Settings = ({ isOpen, onClose }) => {
   const buttonVariants = useButtonStyles();
@@ -43,8 +13,8 @@ const Settings = ({ isOpen, onClose }) => {
     other: true
   });
 
-  // Use the custom hook for persistent settings
-  const [settings, setSettings] = usePersistedSettings({
+  // Use the localStorage hook for settings
+  const [settings, setSettings] = useLocalStorage(SETTINGS_STORAGE_KEY, {
     projects: '',
     modules: '',
     mqttBroker: 'localhost',
@@ -184,10 +154,7 @@ const Settings = ({ isOpen, onClose }) => {
   };
 
   const handleSave = () => {
-    // Force localStorage save by creating a new object
-    const settingsCopy = { ...settings };
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCopy));
-    console.log('Settings explicitly saved to localStorage:', settingsCopy);
+    // Settings already saved via the useLocalStorage hook
     alert('Settings saved successfully!');
     onClose();
   };

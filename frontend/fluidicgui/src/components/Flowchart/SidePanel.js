@@ -4,6 +4,7 @@ import defaultProperties from '../../data/defaultProperties.json';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 import { WS_URL } from '../../config';
+import FlowchartUploader from './FlowchartUploader';
 
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
@@ -14,6 +15,7 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
   const [nodeTypes, setNodeTypes] = useState([]);    // State to store node types
   const [localWs, setLocalWs] = useState(null);
   const [localDevices, setLocalDevices] = useState([]);
+  const [exportFilename, setExportFilename] = useState('flow');  // Default filename
   const { toObject } = useReactFlow();  // Access React Flow instance
   
   // Get dynamic button styles
@@ -142,27 +144,26 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
+    // Use the user-provided filename or default to 'flow'
+    const filename = exportFilename.trim() || 'flow';
+    
+    // Ensure filename has .json extension
+    const finalFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
+
     // Trigger download
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'flow.json';
+    link.download = finalFilename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Import flow from JSON
-  const handleImport = (event) => {
-    const fileReader = new FileReader();
-    
-    fileReader.onload = (e) => {
-      const importedFlow = e.target.result;  // This is the raw file content
-      if (onImportFlow) {
-        onImportFlow(importedFlow);  // Pass the imported data to the function
-      }
-    };
-    
-    fileReader.readAsText(event.target.files[0]);  // Ensure the file is read as text
+  // Handle flowchart selection from the uploader
+  const handleFlowchartSelect = (flowchartData) => {
+    if (onImportFlow) {
+      onImportFlow(JSON.stringify(flowchartData));
+    }
   };
 
   const styles = {
@@ -205,6 +206,17 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
     deviceItem: {
       padding: '5px 0',
       borderBottom: '1px solid #444'
+    },
+    buttonRow: {
+      display: 'flex',
+      gap: '10px',
+      marginTop: '10px'
+    },
+    exportSection: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      marginBottom: '15px'
     }
   };
 
@@ -246,27 +258,35 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
       )}
 
       <h3>Data Control</h3>
-      <div>
-        <button onClick={handleExport} style={buttonVariants.secondaryButton}>
-          Export Flow (JSON)
-        </button>
+      
+      {/* Flowchart Uploader */}
+      <FlowchartUploader onFlowchartSelect={handleFlowchartSelect} />
+      
+      <div style={styles.exportSection}>
         <input
-          type="file"
-          accept=".json"
-          onChange={handleImport}
+          type="text"
+          placeholder="Export Filename"
+          value={exportFilename}
+          onChange={(e) => setExportFilename(e.target.value)}
           style={styles.input}
         />
-        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+        <div style={styles.buttonRow}>
+          <button onClick={handleExport} style={buttonVariants.secondaryButton}>
+            Export Flow
+          </button>
           <button 
             onClick={handleLocalScan} 
             style={buttonVariants.secondaryButton}>
-            Scan for Devices
-          </button>
-          <button onClick={onProceed} style={buttonVariants.primaryButton}>
-            Next
+            Scan Devices
           </button>
         </div>
       </div>
+      
+      <button 
+        onClick={onProceed} 
+        style={{...buttonVariants.primaryButton, width: '100%', marginTop: '15px'}}>
+        Next
+      </button>
     </div>
   );
 };

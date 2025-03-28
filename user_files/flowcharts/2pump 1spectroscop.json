@@ -1,0 +1,590 @@
+{
+  "nodes": [
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741052666567",
+      "type": "customNode",
+      "position": {
+        "x": 1394.5288629226595,
+        "y": 26.655883050913275
+      },
+      "data": {
+        "label": "d",
+        "type": "droplet",
+        "properties": [
+          {
+            "name": "minSeparationVolume",
+            "label": "Minimum Separation Volume [uL]",
+            "type": "number",
+            "default": 5
+          }
+        ],
+        "parameters": [
+          {
+            "name": "volume",
+            "description": "droplet volume [uL]",
+            "min": 0,
+            "max": 100,
+            "default": 5
+          },
+          {
+            "name": "prefixVolume",
+            "description": "carrier liquid volume in front of droplet [uL]",
+            "min": 0,
+            "max": 100,
+            "default": 0
+          },
+          {
+            "name": "surfixVolume",
+            "description": "carrier liquidvolume after droplet [uL]",
+            "min": 0,
+            "max": 100,
+            "default": 5
+          },
+          {
+            "name": "volumetricSpeed",
+            "description": "volume per time unit pushed through first pump [uL/s]",
+            "min": 0,
+            "max": 20,
+            "default": 2
+          }
+        ]
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1394.5288629226595,
+        "y": 26.655883050913275
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741052680421",
+      "type": "customNode",
+      "position": {
+        "x": 266.7133441020923,
+        "y": 137.76401665220814
+      },
+      "data": {
+        "label": "pump_1",
+        "type": "pump",
+        "properties": [
+          {
+            "name": "diameter",
+            "label": "Syringe Diameter [mm]",
+            "type": "number",
+            "default": 7.284
+          },
+          {
+            "name": "length",
+            "label": "Syringe Length [mm]",
+            "type": "number",
+            "default": 60
+          },
+          {
+            "name": "steps per revolution",
+            "label": "how many steps motor does to do single revolution",
+            "type": "number",
+            "default": 1600
+          },
+          {
+            "name": "lead",
+            "label": "distance moved by single revolution [mm]",
+            "type": "number",
+            "default": 1
+          },
+          {
+            "name": "MQTTname",
+            "label": "name in MQTT or first part of message topic, used for communication",
+            "type": "string",
+            "default": "pump1"
+          },
+          {
+            "name": "content",
+            "label": "Content",
+            "type": "text",
+            "default": "water"
+          },
+          {
+            "name": "carrier",
+            "label": "is it a carrier liquid?",
+            "type": "boolean",
+            "default": false
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ratio",
+            "description": "volume fraction in droplet [0-1]",
+            "min": 0,
+            "max": 1,
+            "default": 0.5
+          }
+        ],
+        "carrier": true,
+        "MQTTname": "pump_1",
+        "content": "oil"
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 266.7133441020923,
+        "y": 137.76401665220814
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053209277",
+      "type": "customNode",
+      "position": {
+        "x": 635.4009508055942,
+        "y": 732.3153406915897
+      },
+      "data": {
+        "label": "pump_2",
+        "type": "pump",
+        "properties": [
+          {
+            "name": "diameter",
+            "label": "Syringe Diameter [mm]",
+            "type": "number",
+            "default": 7.284
+          },
+          {
+            "name": "length",
+            "label": "Syringe Length [mm]",
+            "type": "number",
+            "default": 60
+          },
+          {
+            "name": "steps per revolution",
+            "label": "how many steps motor does to do single revolution",
+            "type": "number",
+            "default": 1600
+          },
+          {
+            "name": "lead",
+            "label": "distance moved by single revolution [mm]",
+            "type": "number",
+            "default": 1
+          },
+          {
+            "name": "MQTTname",
+            "label": "name in MQTT or first part of message topic, used for communication",
+            "type": "string",
+            "default": "pump1"
+          },
+          {
+            "name": "content",
+            "label": "Content",
+            "type": "text",
+            "default": "water"
+          },
+          {
+            "name": "carrier",
+            "label": "is it a carrier liquid?",
+            "type": "boolean",
+            "default": false
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ratio",
+            "description": "volume fraction in droplet [0-1]",
+            "min": 0,
+            "max": 1,
+            "default": 0.5
+          }
+        ],
+        "MQTTname": "pump_2"
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 635.4009508055942,
+        "y": 732.3153406915897
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053237351",
+      "type": "customNode",
+      "position": {
+        "x": 1295.2858594126417,
+        "y": 1217.664618985696
+      },
+      "data": {
+        "label": "pump_3",
+        "type": "pump",
+        "properties": [
+          {
+            "name": "diameter",
+            "label": "Syringe Diameter [mm]",
+            "type": "number",
+            "default": 7.284
+          },
+          {
+            "name": "length",
+            "label": "Syringe Length [mm]",
+            "type": "number",
+            "default": 60
+          },
+          {
+            "name": "steps per revolution",
+            "label": "how many steps motor does to do single revolution",
+            "type": "number",
+            "default": 1600
+          },
+          {
+            "name": "lead",
+            "label": "distance moved by single revolution [mm]",
+            "type": "number",
+            "default": 1
+          },
+          {
+            "name": "MQTTname",
+            "label": "name in MQTT or first part of message topic, used for communication",
+            "type": "string",
+            "default": "pump1"
+          },
+          {
+            "name": "content",
+            "label": "Content",
+            "type": "text",
+            "default": "water"
+          },
+          {
+            "name": "carrier",
+            "label": "is it a carrier liquid?",
+            "type": "boolean",
+            "default": false
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ratio",
+            "description": "volume fraction in droplet [0-1]",
+            "min": 0,
+            "max": 1,
+            "default": 0.5
+          }
+        ],
+        "MQTTname": "pump_3"
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1295.2858594126417,
+        "y": 1217.664618985696
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053249289",
+      "type": "customNode",
+      "position": {
+        "x": 1277.541689251691,
+        "y": 539.8402160327794
+      },
+      "data": {
+        "label": "c1",
+        "type": "connector",
+        "properties": [
+          {
+            "name": "volume",
+            "label": "Volume [uL]",
+            "type": "number",
+            "default": 2
+          }
+        ],
+        "parameters": {}
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1277.541689251691,
+        "y": 539.8402160327794
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053257416",
+      "type": "customNode",
+      "position": {
+        "x": 1695.7267674773734,
+        "y": 891.6107642586056
+      },
+      "data": {
+        "label": "c2",
+        "type": "connector",
+        "properties": [
+          {
+            "name": "volume",
+            "label": "Volume [uL]",
+            "type": "number",
+            "default": 2
+          }
+        ],
+        "parameters": {}
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1695.7267674773734,
+        "y": 891.6107642586056
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053266667",
+      "type": "customNode",
+      "position": {
+        "x": 845.5661103265288,
+        "y": 326.25573844564997
+      },
+      "data": {
+        "label": "c3",
+        "type": "connector",
+        "properties": [
+          {
+            "name": "volume",
+            "label": "Volume [uL]",
+            "type": "number",
+            "default": 2
+          }
+        ],
+        "parameters": {}
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 845.5661103265288,
+        "y": 326.25573844564997
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1741053290464",
+      "type": "customNode",
+      "position": {
+        "x": 3236.4545378193748,
+        "y": 660.763066667952
+      },
+      "data": {
+        "label": "o",
+        "type": "outlet",
+        "properties": [],
+        "parameters": {}
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 3236.4545378193748,
+        "y": 660.763066667952
+      },
+      "dragging": false
+    },
+    {
+      "width": 308,
+      "height": 179,
+      "id": "node-1743117899438",
+      "type": "customNode",
+      "position": {
+        "x": 2558.209248310647,
+        "y": 619.3150185402153
+      },
+      "data": {
+        "label": "spectro",
+        "type": "detector",
+        "properties": [
+          {
+            "name": "MQTTname",
+            "label": "name in MQTT or first part of message topic, used for communication",
+            "type": "string",
+            "default": "detector_1"
+          },
+          {
+            "name": "detector profile",
+            "label": "detector .../profiles/ filepath",
+            "type": "string",
+            "default": "detector_1"
+          },
+          {
+            "name": "wait time",
+            "label": "wait before measurement, delay in ms after front passes detector.",
+            "type": "number",
+            "default": "10"
+          },
+          {
+            "name": "initial volume",
+            "label": "tube volume  [uL]",
+            "type": "number",
+            "default": "10"
+          },
+          {
+            "name": "residual volume",
+            "label": "residual volume [uL]",
+            "type": "number",
+            "default": "10"
+          },
+          {
+            "name": "measurement Volume",
+            "label": "volume of liquid measured simultaneously [uL]",
+            "type": "number",
+            "default": "10"
+          }
+        ],
+        "parameters": {}
+      },
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2558.209248310647,
+        "y": 619.3150185402153
+      },
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "node-1741053209277",
+      "sourceHandle": null,
+      "target": "node-1741053249289",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1741053253285",
+      "data": {
+        "properties": {
+          "length": 100,
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      }
+    },
+    {
+      "source": "node-1741053237351",
+      "sourceHandle": null,
+      "target": "node-1741053257416",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1741053260412",
+      "data": {
+        "properties": {
+          "length": 100,
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      }
+    },
+    {
+      "source": "node-1741053249289",
+      "sourceHandle": null,
+      "target": "node-1741053257416",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1741053261682",
+      "data": {
+        "properties": {
+          "length": "38",
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      },
+      "selected": false
+    },
+    {
+      "source": "node-1741052680421",
+      "sourceHandle": null,
+      "target": "node-1741053266667",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1741053268986",
+      "data": {
+        "properties": {
+          "length": 100,
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      }
+    },
+    {
+      "source": "node-1741053266667",
+      "sourceHandle": null,
+      "target": "node-1741053249289",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1741053270830",
+      "data": {
+        "properties": {
+          "length": "10",
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      },
+      "selected": false
+    },
+    {
+      "source": "node-1741053257416",
+      "sourceHandle": null,
+      "target": "node-1743117899438",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1743117910155",
+      "data": {
+        "properties": {
+          "length": 100,
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      }
+    },
+    {
+      "source": "node-1743117899438",
+      "sourceHandle": null,
+      "target": "node-1741053290464",
+      "targetHandle": null,
+      "type": "customEdge",
+      "id": "edge-1743117912265",
+      "data": {
+        "properties": {
+          "length": "104",
+          "diameter": 1
+        }
+      },
+      "style": {
+        "strokeWidth": 5,
+        "stroke": "#bfb"
+      },
+      "selected": true
+    }
+  ],
+  "viewport": {
+    "x": -303.89352048222236,
+    "y": 94.17156622472476,
+    "zoom": 0.6597539635637263
+  }
+}

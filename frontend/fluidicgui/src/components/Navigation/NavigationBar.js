@@ -3,7 +3,7 @@ import { useButtonColorScheme, buttonColorSchemeOptions, ColorSchemePreview } fr
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 import Settings from '../Settings/Settings';
 
-const NavigationBar = ({ currentStep, onNavigate }) => {
+const NavigationBar = ({ currentStep, onNavigate, simulationAvailable = false, hasDropletNode = false }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorMenuOpen, setColorMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -116,8 +116,8 @@ const NavigationBar = ({ currentStep, onNavigate }) => {
 
   const buttons = [
     { step: 1, label: 'Flowchart Editor' },
-    { step: 3, label: 'Droplet Creator' },
-    { step: 7, label: 'Simulation' }
+    { step: 3, label: 'Droplet Creator', requiresDropletNode: true },
+    { step: 7, label: 'Simulation', requiresAvailability: true }
   ];
 
   const handleMenuItemClick = (menuStep) => {
@@ -145,7 +145,7 @@ const NavigationBar = ({ currentStep, onNavigate }) => {
   return (
     <>
       <div style={styles.navbar}>
-        {/* First button */}
+        {/* First button - Flowchart Editor is always visible */}
         <button
           key={buttons[0].step}
           onClick={() => onNavigate(buttons[0].step)}
@@ -162,48 +162,57 @@ const NavigationBar = ({ currentStep, onNavigate }) => {
           {buttons[0].label}
         </button>
 
-        {/* Plus button with dropdown */}
-        <div ref={menuRef} style={{ position: 'relative' }}>
-          <button 
-            style={styles.plusButton}
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            +
-          </button>
-          <div style={styles.contextMenu}>
-            <div 
-              style={styles.menuItem} 
-              onClick={() => handleMenuItemClick(4)} // Using step 4 for Response Surface Methodology
+        {/* Plus button with dropdown - only visible when droplet node exists */}
+        {hasDropletNode && (
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button 
+              style={styles.plusButton}
+              onClick={() => setMenuOpen(!menuOpen)}
             >
-              Response surface methodology
-            </div>
-            <div 
-              style={styles.menuItem} 
-              onClick={() => handleMenuItemClick(8)} // Using step 8 for Interpolation Generator
-            >
-              Parameter Interpolation
+              +
+            </button>
+            <div style={styles.contextMenu}>
+              <div 
+                style={styles.menuItem} 
+                onClick={() => handleMenuItemClick(4)} // Using step 4 for Response Surface Methodology
+              >
+                Response surface methodology
+              </div>
+              <div 
+                style={styles.menuItem} 
+                onClick={() => handleMenuItemClick(8)} // Using step 8 for Interpolation Generator
+              >
+                Parameter Interpolation
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Remaining buttons */}
-        {buttons.slice(1).map(({ step, label }) => (
-          <button
-            key={step}
-            onClick={() => onNavigate(step)}
-            style={{
-              ...buttonVariants.secondaryButton,
-              ...(currentStep === step ? {
-                backgroundColor: '#555',
-                border: '1px solid #8c8',
-                boxShadow: '0 0 5px #8c8'
-              } : {})
-            }}
-            disabled={currentStep === step}
-          >
-            {label}
-          </button>
-        ))}
+        {buttons.slice(1).map(({ step, label, requiresAvailability, requiresDropletNode }) => {
+          // Check both conditions: availability and droplet node existence
+          const shouldShow = 
+            (!requiresAvailability || simulationAvailable) && 
+            (!requiresDropletNode || hasDropletNode);
+          
+          return shouldShow && (
+            <button
+              key={step}
+              onClick={() => onNavigate(step)}
+              style={{
+                ...buttonVariants.secondaryButton,
+                ...(currentStep === step ? {
+                  backgroundColor: '#555',
+                  border: '1px solid #8c8',
+                  boxShadow: '0 0 5px #8c8'
+                } : {})
+              }}
+              disabled={currentStep === step}
+            >
+              {label}
+            </button>
+          );
+        })}
 
         {/* Color scheme button with dropdown */}
         <div ref={colorMenuRef} style={{ position: 'relative', marginLeft: 'auto' }}>

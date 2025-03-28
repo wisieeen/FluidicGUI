@@ -1,17 +1,19 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ReactFlowProvider, useNodesState, useEdgesState } from 'react-flow-renderer';
 import FlowchartEditor from './components/Flowchart/FlowchartEditor';
 import SidePanel from './components/Flowchart/SidePanel';
-import ManualDropletCreation from './components/DropletGenerator/Manual/ManualDropletCreation';
-import ResponseSurfaceGenerator from './components/DropletGenerator/ResponseSurfaceGenerator';
-import InterpolationGenerator from './components/DropletGenerator/InterpolationGenerator';
-import ScriptBasedGeneration from './components/DropletGenerator/ScriptBasedGeneration';
 import PlaceholderComponent from './components/DropletGenerator/PlaceholderComponent';
-import Simulation from './components/Simulation/Simulation';
+import ScriptBasedGeneration from './components/DropletGenerator/ScriptBasedGeneration';
 import NavigationBar from './components/Navigation/NavigationBar';
 import { ButtonColorSchemeProvider } from './context/ColorSchemeContext';
 import { ButtonStyleProvider } from './styles/ButtonStyleProvider';
 import { WS_URL } from './config';
+
+// Lazy load heavy components
+const Simulation = lazy(() => import('./components/Simulation/Simulation'));
+const ManualDropletCreation = lazy(() => import('./components/DropletGenerator/Manual/ManualDropletCreation'));
+const ResponseSurfaceGenerator = lazy(() => import('./components/DropletGenerator/ResponseSurfaceGenerator'));
+const InterpolationGenerator = lazy(() => import('./components/DropletGenerator/InterpolationGenerator'));
 
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
@@ -26,6 +28,8 @@ const App = () => {
   const [rsmDroplets, setRsmDroplets] = useState([]);
   const [parameterRanges, setParameterRanges] = useState({});
   const [parameterVisibility, setParameterVisibility] = useState({});
+  const [simulationAvailable, setSimulationAvailable] = useState(false);
+  const [hasDropletNode, setHasDropletNode] = useState(false);
   const [ws, setWs] = useState(null);
   const [detectedDevices, setDetectedDevices] = useState([]);
 
@@ -132,10 +136,20 @@ const App = () => {
     window.detectedDevices = detectedDevices;
   }, [detectedDevices]);
 
+  // Check if there's at least one droplet node in the flowchart
+  useEffect(() => {
+    const dropletNodeExists = nodes.some(node => node.data.type === 'droplet');
+    setHasDropletNode(dropletNodeExists);
+    console.log('Droplet node exists:', dropletNodeExists);
+  }, [nodes]);
+
   const handleNavigate = (newStep) => {
-    if (newStep === 7 && droplets.length === 0) {
-      console.log('No droplets available for simulation. Redirecting to droplet creation.');
-      setStep(3);
+    if (newStep === 7 && !simulationAvailable) {
+      console.log('Simulation not available yet. Please create droplets first.');
+      setStep(3); // Redirect to droplet creation if available
+    } else if ((newStep === 3 || newStep === 4 || newStep === 8) && !hasDropletNode) {
+      console.log('No droplet node in flowchart. Please add a droplet node first.');
+      setStep(1); // Redirect to flowchart editor
     } else {
       setStep(newStep);
     }
@@ -170,16 +184,19 @@ const App = () => {
 
   const handleSimulationStart = (createdDroplets) => {
     setDroplets(createdDroplets);
+    setSimulationAvailable(true);
     setStep(7);
   };
 
   const handleRSMDropletGeneration = (generatedDroplets) => {
     setManualDroplets(generatedDroplets);
+    setSimulationAvailable(true);
     setStep(3);
   };
 
   const handleInterpolationGeneration = (generatedDroplets) => {
     setManualDroplets(generatedDroplets);
+    setSimulationAvailable(true);
     setStep(3); // Go to Manual Droplet Creation instead of simulation
   };
 
@@ -190,12 +207,42 @@ const App = () => {
     ).map(node => node.id);
   };
 
+  // Loading components
+  const LoadingSimulation = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <h2>Loading Simulation...</h2>
+    </div>
+  );
+
+  const LoadingDropletCreation = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <h2>Loading Droplet Creator...</h2>
+    </div>
+  );
+
+  const LoadingRSM = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <h2>Loading Response Surface Methodology...</h2>
+    </div>
+  );
+
+  const LoadingInterpolation = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <h2>Loading Parameter Interpolation...</h2>
+    </div>
+  );
+
   return (
     <ButtonColorSchemeProvider>
       <ButtonStyleProvider>
         <ReactFlowProvider>
           <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-            <NavigationBar currentStep={step} onNavigate={handleNavigate} />
+            <NavigationBar 
+              currentStep={step} 
+              onNavigate={handleNavigate} 
+              simulationAvailable={simulationAvailable}
+              hasDropletNode={hasDropletNode}
+            />
             <div style={{ flex: 1, display: 'flex' }}>
               {step === 1 && (
                 <div style={{ flex: 1 }}>
@@ -221,45 +268,53 @@ const App = () => {
               )}
 
               {step === 3 && (
-                <ManualDropletCreation 
-                  availableParameters={[]}
-                  nodes={nodes}
-                  setNodes={setNodes}
-                  onNext={handleSimulationStart}
-                  selectedCarrierPumps={getCarrierPumps()}
-                  droplets={manualDroplets}
-                  setDroplets={setManualDroplets}
-                  parameterRanges={parameterRanges}
-                  setParameterRanges={setParameterRanges}
-                  parameterVisibility={parameterVisibility}
-                  setParameterVisibility={setParameterVisibility}
-                />
+                <Suspense fallback={<LoadingDropletCreation />}>
+                  <ManualDropletCreation 
+                    availableParameters={[]}
+                    nodes={nodes}
+                    setNodes={setNodes}
+                    onNext={handleSimulationStart}
+                    selectedCarrierPumps={getCarrierPumps()}
+                    droplets={manualDroplets}
+                    setDroplets={setManualDroplets}
+                    parameterRanges={parameterRanges}
+                    setParameterRanges={setParameterRanges}
+                    parameterVisibility={parameterVisibility}
+                    setParameterVisibility={setParameterVisibility}
+                  />
+                </Suspense>
               )}
               
               {step === 4 && (
-                <ResponseSurfaceGenerator 
-                  nodes={nodes}
-                  setNodes={setNodes}
-                  onNext={handleRSMDropletGeneration}
-                  selectedCarrierPumps={getCarrierPumps()}
-                />
+                <Suspense fallback={<LoadingRSM />}>
+                  <ResponseSurfaceGenerator 
+                    nodes={nodes}
+                    setNodes={setNodes}
+                    onNext={handleRSMDropletGeneration}
+                    selectedCarrierPumps={getCarrierPumps()}
+                  />
+                </Suspense>
               )}
               {step === 5 && <ScriptBasedGeneration />}
               {step === 6 && <PlaceholderComponent />}
               {step === 8 && (
-                <InterpolationGenerator
-                  nodes={nodes}
-                  selectedCarrierPumps={getCarrierPumps()}
-                  onNext={handleInterpolationGeneration}
-                />
+                <Suspense fallback={<LoadingInterpolation />}>
+                  <InterpolationGenerator
+                    nodes={nodes}
+                    selectedCarrierPumps={getCarrierPumps()}
+                    onNext={handleInterpolationGeneration}
+                  />
+                </Suspense>
               )}
               {step === 7 && (
-                <Simulation 
-                  nodes={nodes}
-                  edges={edges}
-                  droplets={droplets}
-                  selectedCarrierPumps={getCarrierPumps()}
-                />
+                <Suspense fallback={<LoadingSimulation />}>
+                  <Simulation 
+                    nodes={nodes}
+                    edges={edges}
+                    droplets={droplets}
+                    selectedCarrierPumps={getCarrierPumps()}
+                  />
+                </Suspense>
               )}
             </div>
           </div>
