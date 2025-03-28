@@ -10,7 +10,18 @@ import defaultProperties from '../../data/defaultProperties.json';
 import SidePanel from './SidePanel';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 
-const FlowchartEditor = ({ nodes, setNodes, onAddNode,onNodesChange, onEdgesChange, edges, setEdges, onProceed }) => {
+const FlowchartEditor = ({ 
+  nodes, 
+  setNodes, 
+  onAddNode,
+  onNodesChange, 
+  onEdgesChange, 
+  edges, 
+  setEdges, 
+  onProceed,
+  onScanDevices,
+  detectedDevices = []
+}) => {
   const nodeTypes = useMemo(() => ({ customNode: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ customEdge: CustomEdge }), []);
   const [selectedNodes, setSelectedNodes] = useState([]); // Track multiple selected nodes
@@ -200,10 +211,7 @@ const FlowchartEditor = ({ nodes, setNodes, onAddNode,onNodesChange, onEdgesChan
         type: newNode.type,  // React Flow type
         position: newNode.position,
         data: {
-          label: newNode.data.label,
-          type: newNode.data.type,  // Node type, e.g., 'pump'
-          properties: newNode.data.properties || {},  // Load properties passed from SidePanel
-          parameters: newNode.data.parameters || {},
+          ...newNode.data,  // Preserve all data properties
           onPropertyChange: (propertyName, propertyValue) => 
             handlePropertyChange(newNode.id, propertyName, propertyValue),
         },
@@ -290,7 +298,15 @@ const FlowchartEditor = ({ nodes, setNodes, onAddNode,onNodesChange, onEdgesChan
           >
             <Background color="#666666" gap={50} size={0.5} />
             <Controls />
-            <SidePanel onAddNode={handleAddNode} onProceed={onProceed} onImportFlow={onImportFlow} />
+            <SidePanel 
+              onAddNode={handleAddNode} 
+              onProceed={onProceed} 
+              onImportFlow={onImportFlow}
+              onScanDevices={onScanDevices}
+              detectedDevices={detectedDevices}
+              nodes={nodes}
+              edges={edges}
+            />
           </ReactFlow>
 
           {showContextMenu && (

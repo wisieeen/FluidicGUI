@@ -8,6 +8,7 @@ import NavigationBar from './components/Navigation/NavigationBar';
 import { ButtonColorSchemeProvider } from './context/ColorSchemeContext';
 import { ButtonStyleProvider } from './styles/ButtonStyleProvider';
 import { WS_URL } from './config';
+import { createWebSocket, parseDeviceInfo, setupMQTTDebugger } from './utils/mqttDebugger';
 
 // Lazy load heavy components
 const Simulation = lazy(() => import('./components/Simulation/Simulation'));
@@ -33,64 +34,57 @@ const App = () => {
   const [ws, setWs] = useState(null);
   const [detectedDevices, setDetectedDevices] = useState([]);
 
+  // Initialize MQTT debugger
   useEffect(() => {
-    // Create WebSocket connection
-    const websocket = new WebSocket(WS_URL);
-    
-    websocket.onopen = () => {
-      console.log('Connected to WebSocket server');
-      
-      // Send device scan message when the app starts
-      const scanMessage = {
-        topic: "common/device_scan",
-        payload: {}
-      };
-      
-      websocket.send(JSON.stringify(scanMessage));
-      console.log('Sent device scan message on startup');
-      
-      // Reset the detected devices list
-      setDetectedDevices([]);
-    };
+    setupMQTTDebugger();
+  }, []);
 
-    websocket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+  useEffect(() => {
+    // Create WebSocket connection with auto-reconnect
+    const cleanup = createWebSocket(WS_URL, {
+      onOpen: (websocket) => {
+        console.log('Connected to WebSocket server');
+        setWs(websocket);
+        window.appWebSocket = websocket; // Make available for debugging
         
+        // Send device scan message when the app starts
+        const scanMessage = {
+          topic: "common/device_scan",
+          payload: {}
+        };
+        
+        websocket.send(JSON.stringify(scanMessage));
+        console.log('Sent device scan message on startup');
+        
+        // Reset the detected devices list
+        setDetectedDevices([]);
+      },
+      onMessage: (data) => {
         // Check if this is a device response message
         if (data.topic === 'common/device_response') {
-          // Parse the payload - format is "MQTTname:type"
-          const responseData = data.payload.toString();
-          const [MQTTname, type] = responseData.split(':');
+          const deviceInfo = parseDeviceInfo(data.payload);
           
-          if (MQTTname && type) {
+          if (deviceInfo) {
             setDetectedDevices(prev => {
               // Check if device is already in the list
-              const exists = prev.some(device => device.MQTTname === MQTTname);
+              const exists = prev.some(device => device.MQTTname === deviceInfo.MQTTname);
               if (!exists) {
-                console.log(`New device detected: ${MQTTname} (${type})`);
-                return [...prev, { MQTTname, type }];
+                console.log(`New device detected: ${deviceInfo.MQTTname} (${deviceInfo.type})`);
+                return [...prev, deviceInfo];
               }
               return prev;
             });
           }
         }
-      } catch (error) {
-        console.error('Error processing WebSocket message:', error);
+      },
+      onError: (error) => {
+        console.error('WebSocket error:', error);
       }
-    };
-
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    setWs(websocket);
+    });
 
     // Cleanup on unmount
     return () => {
-      if (websocket) {
-        websocket.close();
-      }
+      cleanup();
     };
   }, []);
 
@@ -121,9 +115,6 @@ const App = () => {
   }, [nodes]);
   
   useEffect(() => {
-    // Make ws available globally for debugging
-    window.appWebSocket = ws;
-    
     // Check if ws is connected
     if (ws) {
       console.log('WebSocket connection state updated:', ws.readyState);
@@ -246,14 +237,6 @@ const App = () => {
             <div style={{ flex: 1, display: 'flex' }}>
               {step === 1 && (
                 <div style={{ flex: 1 }}>
-                  <SidePanel 
-                    onAddNode={handleAddNode}
-                    onScanDevices={handleScanDevices}
-                    detectedDevices={detectedDevices}
-                    nodes={nodes}
-                    edges={edges}
-                    onProceed={() => handleNavigate(3)}
-                  />
                   <FlowchartEditor 
                     onAddNode={handleAddNode}
                     nodes={nodes}
@@ -262,7 +245,9 @@ const App = () => {
                     setEdges={setEdges}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
-                    onProceed={() => handleNavigate(3)} 
+                    onProceed={() => handleNavigate(3)}
+                    onScanDevices={handleScanDevices}
+                    detectedDevices={detectedDevices}
                   />
                 </div>
               )}
