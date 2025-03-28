@@ -1,6 +1,6 @@
 import { backgroundVariants } from '../../../styles/backgroundStyles';
 
-const NewDetectorPanelStyles = {
+const USBSpectrometerStyles = {
   container: {
     position: 'relative',
     overflow: 'auto',
@@ -145,4 +145,4 @@ const NewDetectorPanelStyles = {
   }
 };
 
-export default NewDetectorPanelStyles; 
+export default USBSpectrometerStyles; 

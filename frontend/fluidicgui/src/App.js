@@ -16,6 +16,9 @@ const ManualDropletCreation = lazy(() => import('./components/DropletGenerator/M
 const ResponseSurfaceGenerator = lazy(() => import('./components/DropletGenerator/ResponseSurfaceGenerator'));
 const InterpolationGenerator = lazy(() => import('./components/DropletGenerator/InterpolationGenerator'));
 
+// Lazy load USBSpectrometer component for direct access
+const USBSpectrometer = lazy(() => import('./components/Simulation/USBSpectrometer'));
+
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
 
@@ -33,10 +36,76 @@ const App = () => {
   const [hasDropletNode, setHasDropletNode] = useState(false);
   const [ws, setWs] = useState(null);
   const [detectedDevices, setDetectedDevices] = useState([]);
+  
+  // State for dynamic overlay components
+  const [overlayComponent, setOverlayComponent] = useState(null);
 
   // Initialize MQTT debugger
   useEffect(() => {
     setupMQTTDebugger();
+  }, []);
+
+  // Set up global event handlers for cross-component communication
+  useEffect(() => {
+    // Create a global event system if it doesn't exist
+    if (!window.customEvents) {
+      window.customEvents = {
+        openSpectrometer: (node) => {
+          console.log('Global openSpectrometer called, but no handler is registered yet');
+        },
+        setSpectrometerHandler: (handler) => {
+          window.customEvents.openSpectrometer = handler;
+          console.log('Spectrometer handler registered');
+        }
+      };
+    }
+
+    // Setup spectrometer opening functionality
+    const openSpectrometerNode = (nodeData) => {
+      console.log('App.js: Opening spectrometer directly for node:', nodeData);
+      
+      // Generate sample readings for demo
+      const generateSampleReadings = () => {
+        const readings = [];
+        const now = Date.now();
+        
+        // Generate a sine wave with noise
+        for (let i = 0; i < 100; i++) {
+          const baseValue = Math.sin(i / 10) * 0.5 + 0.5;
+          const noise = Math.random() * 0.1;
+          
+          readings.push({
+            value: baseValue + noise,
+            timestamp: now - (100 - i) * 100,
+          });
+        }
+        
+        return readings;
+      };
+      
+      // Set the overlay component to USBSpectrometer
+      setOverlayComponent({
+        type: 'USBSpectrometer',
+        props: {
+          detector: nodeData,
+          readings: generateSampleReadings(),
+          onClose: () => setOverlayComponent(null),
+          initialPosition: { x: 50, y: 100 }
+        }
+      });
+    };
+
+    // Register the handler
+    window.customEvents.setSpectrometerHandler(openSpectrometerNode);
+
+    // Cleanup on unmount
+    return () => {
+      if (window.customEvents) {
+        window.customEvents.setSpectrometerHandler(() => {
+          console.log('App component unmounted, handler reset');
+        });
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -302,6 +371,41 @@ const App = () => {
                 </Suspense>
               )}
             </div>
+            
+            {/* Dynamic Overlay Components */}
+            {overlayComponent && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9999, // Higher than everything else
+                pointerEvents: 'none' // Allow clicking through the container, but not its children
+              }}>
+                <Suspense fallback={
+                  <div style={{
+                    position: 'fixed',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    background: 'rgba(0,0,0,0.8)',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    color: 'white',
+                    pointerEvents: 'auto'
+                  }}>
+                    <h2>Loading Component...</h2>
+                  </div>
+                }>
+                  {overlayComponent.type === 'USBSpectrometer' && (
+                    <div style={{ pointerEvents: 'auto' }}>
+                      <USBSpectrometer {...overlayComponent.props} />
+                    </div>
+                  )}
+                </Suspense>
+              </div>
+            )}
           </div>
         </ReactFlowProvider>
       </ButtonStyleProvider>

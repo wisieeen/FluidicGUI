@@ -20,7 +20,7 @@ import {
 import './simulation.css'; // We'll create this CSS file
 import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
-import NewDetectorPanel from './NewDetectorPanel';
+import USBSpectrometer from './USBSpectrometer';
 import { convertDetectorReading } from '../../utils/detectorCalculations';
 import { WS_URL } from '../../config';
 
@@ -75,6 +75,40 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     };
   }, []);
 
+  // Check localStorage for a spectrometer node to open
+  useEffect(() => {
+    try {
+      const spectrometerNodeData = localStorage.getItem('openSpectrometerNode');
+      
+      if (spectrometerNodeData) {
+        console.log('Found spectrometer node data in localStorage');
+        const nodeData = JSON.parse(spectrometerNodeData);
+        
+        // Clear the localStorage item to prevent reopening on refreshes
+        localStorage.removeItem('openSpectrometerNode');
+        
+        // Find the actual node in our graphData
+        const node = graphData.nodes.find(n => n.id === nodeData.id);
+        
+        if (node) {
+          console.log('Found matching node in graphData, opening spectrometer', node);
+          // Generate sample readings for demo purposes
+          const sampleReadings = generateSampleDetectorReadings();
+          
+          // Set the selected detector with a small delay to ensure the component is fully mounted
+          setTimeout(() => {
+            setSelectedDetector(node);
+            setDetectorReadings(sampleReadings);
+          }, 500);
+        } else {
+          console.log('No matching node found in graphData');
+        }
+      }
+    } catch (error) {
+      console.error('Error processing spectrometer node from localStorage', error);
+    }
+  }, [graphData.nodes]);
+
   const sendingEventsToDevices = () => {
     sendEventsToDevices(pumpEvents, ws, nodes);
     // Reset simulation state
@@ -86,7 +120,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     generateEventList([{ droplets: droplets }]);
   };
 
-  const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector"];
+  const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector", "USBSpectrometer"];
   const setOfSecondaryLineNodes = ['pump'];
   const eventType = ['setPumpSpeed', 'setThermostatTemperature', 'setLedIntensity', 'wait', 'blockEnd'];
 
@@ -623,7 +657,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           else if (reachedNode.type === 'outlet') {
             console.log('reachedNode is outlet');
           }
-          else if (reachedNode.type === 'detector') {
+          else if (reachedNode.type === 'detector' || reachedNode.type === 'USBSpectrometer') {
             console.log('reachedNode is detector');
           }
         } 
@@ -780,7 +814,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
             smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode = Infinity;
             smallestFrontTimeDroplet[0].frontNextNodeID = null;
           }
-          else if (reachedNode.node.type === 'detector') { //przypadek gdy dochodzi do detektora
+          else if (reachedNode.node.type === 'detector' || reachedNode.node.type === 'USBSpectrometer') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
             const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
             if (nextNode) {
@@ -1043,7 +1077,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
             smallestRearTimeDroplet[0].rearNextNodeID = null;
             smallestRearTimeDroplet[0].rearTimeToReachNextNode = Infinity;
           }
-          else if (reachedNode.node.type === 'detector') { //przypadek gdy dochodzi do detektora
+          else if (reachedNode.node.type === 'detector' || reachedNode.node.type === 'USBSpectrometer') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
             const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
             if (nextNode) {
@@ -1111,18 +1145,65 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     setPumpEvents(extractPumpEvents(eventList));
     return eventList;
   }
+
+  // Generate some sample readings for demonstration
+  const generateSampleDetectorReadings = () => {
+    const readings = [];
+    const now = Date.now();
+    
+    // Generate a sine wave with some noise for demo
+    for (let i = 0; i < 100; i++) {
+      const baseValue = Math.sin(i / 10) * 0.5 + 0.5; // 0 to 1 sine wave
+      const noise = Math.random() * 0.1; // Random noise
+      
+      readings.push({
+        value: baseValue + noise,
+        timestamp: now - (100 - i) * 100, // timestamps going backwards from now
+      });
+    }
+    
+    return readings;
+  };
+
+  const handleNodeClick = useCallback((node) => {
+    console.log('handleNodeClick called with node:', node);
+    if (node.type === 'pump') {
+      setSelectedNode(node);
+    } else if (node.type === 'detector' || node.type === 'USBSpectrometer') {
+      console.log('Setting selected detector:', node);
+      setSelectedDetector(node);
+      // Generate sample readings for demo purposes
+      const sampleReadings = generateSampleDetectorReadings();
+      setDetectorReadings(sampleReadings);
+    }
+  }, [generateSampleDetectorReadings]);
+
   // First useEffect to set initial graphData
   useEffect(() => {
     setDropletHistory([]);
     if (nodes.length > 0 && edges.length > 0) {
-      const graphNodes = nodes.map(node => ({
-        id: node.id,
-        label: node.data.label,
-        type: node.data.type,
-        x: 0,
-        y: 0,
-        volumetricPosition: 0
-      }));
+      const graphNodes = nodes.map(node => {
+        // Create the base node
+        const graphNode = {
+          id: node.id,
+          label: node.data.label,
+          type: node.data.type,
+          x: 0,
+          y: 0,
+          volumetricPosition: 0
+        };
+        
+        // Add the onOpenSpectrometer handler for USBSpectrometer nodes
+        if (node.data.type === 'USBSpectrometer') {
+          console.log('Adding onOpenSpectrometer handler to node:', node.id);
+          graphNode.onOpenSpectrometer = (nodeData) => {
+            console.log('onOpenSpectrometer called for node:', nodeData);
+            handleNodeClick(nodeData);
+          };
+        }
+        
+        return graphNode;
+      });
 
       const graphLinks = edges.map(edge => ({
         source: edge.source,
@@ -1134,7 +1215,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       setGraphData({ nodes: graphNodes, links: graphLinks });
     }
     
-  }, [nodes, edges]);
+  }, [nodes, edges, handleNodeClick]);
 
   // Second useEffect to calculate nodes positions and set up simulation data
   useEffect(() => {
@@ -1286,6 +1367,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       case 'pump': return '#4CAF50';
       case 'connector': return '#2196F3';
       case 'outlet': return '#F44336';
+      case 'detector': return '#FFA000';
+      case 'USBSpectrometer': return '#AA00FF'; // Purple color for USBSpectrometer
       default: return '#FFA000'; // Default color for unknown types
     }
   };
@@ -1451,17 +1534,6 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   }, [currentTimepoint, jumpToTimepoint]);
 
 
-
-  const handleNodeClick = (node) => {
-    if (node.type === 'pump') {
-      setSelectedNode(node);
-    } else if (node.type === 'detector') {
-      setSelectedDetector(node);
-      // Generate sample readings for demo purposes
-      const sampleReadings = generateSampleDetectorReadings();
-      setDetectorReadings(sampleReadings);
-    }
-  };
 
   const handleNodeAction = (action) => {
     console.log('Node action:', action);
@@ -1673,28 +1745,78 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     // Remove all pseudo-element styles that were here
   };
 
-  // Generate some sample readings for demonstration
-  const generateSampleDetectorReadings = () => {
-    const readings = [];
-    const now = Date.now();
-    
-    // Generate a sine wave with some noise for demo
-    for (let i = 0; i < 100; i++) {
-      const baseValue = Math.sin(i / 10) * 0.5 + 0.5; // 0 to 1 sine wave
-      const noise = Math.random() * 0.1; // Random noise
-      
-      readings.push({
-        value: baseValue + noise,
-        timestamp: now - (100 - i) * 100, // timestamps going backwards from now
-      });
-    }
-    
-    return readings;
-  };
-
   const handleCloseDetectorPanel = () => {
     setSelectedDetector(null);
   };
+
+  // Update graphData nodes with this function
+  useEffect(() => {
+    if (nodes && nodes.length > 0 && edges && edges.length > 0) {
+      const graphNodes = nodes.map(node => {
+        // Add onOpenSpectrometer to USBSpectrometer nodes
+        const nodeData = {
+          ...node,
+          label: node.label || node.id,
+          x: node.position?.x || 0,
+          y: node.position?.y || 0,
+          volumetricPosition: 0 // Initial position
+        };
+        
+        // Add the onOpenSpectrometer handler for USBSpectrometer nodes
+        if (node.type === 'USBSpectrometer') {
+          nodeData.onOpenSpectrometer = (nodeData) => {
+            handleNodeClick(nodeData);
+          };
+        }
+        
+        return nodeData;
+      });
+
+      const graphLinks = edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle
+      }));
+
+      setGraphData({ nodes: graphNodes, links: graphLinks });
+    }
+  }, [nodes, edges]);
+
+  // Register the global spectrometer handler
+  useEffect(() => {
+    const handleOpenSpectrometer = (nodeData) => {
+      console.log("Simulation: received openSpectrometer event with data:", nodeData);
+      
+      if (nodeData && (nodeData.type === 'detector' || nodeData.type === 'USBSpectrometer')) {
+        // Find the full node data
+        const fullNode = graphData.nodes.find(n => n.id === nodeData.id) || nodeData;
+        console.log("Simulation: opening spectrometer with node:", fullNode);
+        
+        setSelectedDetector(fullNode);
+        // Generate sample readings for demo purposes
+        const sampleReadings = generateSampleDetectorReadings();
+        setDetectorReadings(sampleReadings);
+      }
+    };
+
+    // Register the handler if window.customEvents exists
+    if (window.customEvents) {
+      console.log("Simulation: registering spectrometer handler");
+      window.customEvents.setSpectrometerHandler(handleOpenSpectrometer);
+    }
+
+    // Cleanup function
+    return () => {
+      if (window.customEvents) {
+        // Reset the handler on unmount
+        window.customEvents.setSpectrometerHandler(() => {
+          console.log('Simulation component unmounted, handler reset');
+        });
+      }
+    };
+  }, [graphData.nodes]);
 
   return (
     <div style={styles.container}>
@@ -2221,7 +2343,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       
       {/* Render detector panel if a detector is selected */}
       {selectedDetector && (
-        <NewDetectorPanel 
+        <USBSpectrometer 
           detector={selectedDetector} 
           readings={detectorReadings}
           onClose={handleCloseDetectorPanel}

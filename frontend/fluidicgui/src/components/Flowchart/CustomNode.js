@@ -6,6 +6,19 @@ import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 // Import the JSON data for node properties
 import defaultProperties from '../../data/defaultProperties.json';
 
+// Create a global event emitter for communication between components
+if (!window.customEvents) {
+  window.customEvents = {
+    openSpectrometer: (node) => {
+      console.log('Global openSpectrometer called, but no handler is registered');
+    },
+    setSpectrometerHandler: (handler) => {
+      window.customEvents.openSpectrometer = handler;
+      console.log('Spectrometer handler registered');
+    }
+  };
+}
+
 const CustomNode = ({ data, id, selected, onClick }) => {
   const [expanded, setExpanded] = useState(false); // State to manage expansion
   const [nodeProperties, setNodeProperties] = useState([]); // Store the properties from JSON
@@ -35,6 +48,27 @@ const CustomNode = ({ data, id, selected, onClick }) => {
 
   // Toggle expand/collapse
   const toggleExpand = () => setExpanded(!expanded);
+
+  // Handler for opening USBSpectrometer
+  const handleOpenSpectrometer = (event) => {
+    event.stopPropagation(); // Prevent node selection
+    console.log("Opening spectrometer for node:", data);
+    
+    // Prepare the node data to send to the global handler
+    const spectrometerNodeData = {
+      id: id,
+      label: data.label,
+      type: 'USBSpectrometer'
+    };
+    
+    // Use the global event system to communicate with App component
+    if (window.customEvents && window.customEvents.openSpectrometer) {
+      console.log("Calling global openSpectrometer handler");
+      window.customEvents.openSpectrometer(spectrometerNodeData);
+    } else {
+      console.error("Global openSpectrometer handler not found");
+    }
+  };
 
   // Render properties dynamically based on node type from JSON
   const renderProperties = () => {
@@ -180,9 +214,24 @@ const CustomNode = ({ data, id, selected, onClick }) => {
       <div style={styles.node}>
         <div>Name: {data.label}</div>  {/* Display node label */}
         <div>Type: {data.type}</div>    {/* Display node type */}
-        <button style={buttonVariants.secondaryButton} onClick={toggleExpand}>
-          {expanded ? '▼' : '▶'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button style={buttonVariants.secondaryButton} onClick={toggleExpand}>
+            {expanded ? '▼' : '▶'}
+          </button>
+          {/* Add spectrometer button only if the node type is USBSpectrometer */}
+          {data.type === 'USBSpectrometer' && (
+            <button 
+              style={{
+                ...buttonVariants.secondaryButton,
+                backgroundColor: '#AA00FF',
+              }} 
+              onClick={handleOpenSpectrometer}
+              title="Open Spectrometer View"
+            >
+              📊
+            </button>
+          )}
+        </div>
         {expanded && renderProperties()}
       </div>
       <Handle

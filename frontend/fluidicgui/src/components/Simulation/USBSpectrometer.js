@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import DraggablePanel from './DraggablePanel';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 import { backgroundVariants } from '../../styles/backgroundStyles';
-import styles from './styles/NewDetectorPanelStyles';
+import styles from './styles/USBSpectrometerStyles';
 
 // Import subcomponents
 import CameraComponent from './DetectorComponents/CameraComponent';
@@ -20,7 +20,7 @@ const waterfallColorSchemeOptions = {
   turbo: 'Turbo'
 };
 
-const NewDetectorPanel = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus }) => {
+const USBSpectrometer = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus }) => {
   const buttonVariants = useButtonStyles();
   const [detectorReadings, setDetectorReadings] = useState([]);
   
@@ -427,6 +427,9 @@ const NewDetectorPanel = ({ detector, readings = [], onClose, initialPosition = 
     <DraggablePanel 
       title={`Detector: ${detector.label || detector.id}`}
       initialPosition={initialPosition}
+      width={panelSize.width}
+      height={panelSize.height}
+      onClose={onClose}
     >
       <div 
         ref={panelRef}
@@ -587,13 +590,6 @@ const NewDetectorPanel = ({ detector, readings = [], onClose, initialPosition = 
           </div>
         </div>
         
-        <button 
-          style={{ ...buttonVariants.secondaryButton, width: '100%' }} 
-          onClick={onClose}
-        >
-          Close
-        </button>
-        
         {/* Show resize info when active */}
         {showResizeInfo && (
           <div style={{
@@ -637,4 +633,4 @@ const NewDetectorPanel = ({ detector, readings = [], onClose, initialPosition = 
   );
 };
 
-export default NewDetectorPanel; 
+export default USBSpectrometer; 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 
-const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "Panel" }) => {
+const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "Panel", width, height, onClose }) => {
   const [position, setPosition] = useState(initialPosition);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -71,7 +71,8 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
       boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
       zIndex: 999, // Ensure it's always on top
       minWidth: '25px', // Slightly wider to accommodate all controls
-      maxWidth: '400px'
+      width: width || 'auto',
+      height: height || 'auto'
     },
     header: {
       padding: '8px 12px',
@@ -82,7 +83,8 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
       userSelect: 'none',
       display: 'flex',
       justifyContent: 'space-between',
-      alignItems: 'center'
+      alignItems: 'center',
+      width: '100%'
     },
     title: {
       margin: 0,
@@ -90,8 +92,27 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
       fontSize: '14px',
       fontWeight: 'bold'
     },
+    closeButton: {
+      width: '20px',
+      height: '20px',
+      background: 'rgba(255, 0, 0, 0.3)',
+      border: 'none',
+      borderRadius: '4px',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      padding: 0,
+      lineHeight: 1,
+      transition: 'background-color 0.2s ease'
+    },
     content: {
       padding: '12px',
+      width: '100%',
+      boxSizing: 'border-box'
     }
   };
 
@@ -99,6 +120,18 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
     <div ref={panelRef} style={styles.panel}>
       <div style={styles.header} onMouseDown={handleMouseDown}>
         <h3 style={styles.title}>{title}</h3>
+        {onClose && (
+          <button 
+            style={styles.closeButton} 
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent triggering drag
+              onClose();
+            }}
+            title="Close"
+          >
+            x
+          </button>
+        )}
       </div>
       <div style={styles.content}>
         {children}

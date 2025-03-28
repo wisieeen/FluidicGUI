@@ -124,9 +124,46 @@
       }
     ]
   },
+  "USBSpectrometer": {
+    "label": "USBSpectrometer",
+    "description":"USB Spectrometer",
+    "properties": [
+      {
+        "name": "detector profile",
+        "label": "detector .../profiles/ filepath",
+        "type": "string",
+        "default": "detector_1"
+      },
+      {
+        "name": "wait time",
+        "label": "wait before measurement, delay in ms after front passes detector.",
+        "type": "number",
+        "default": "10"
+      },
+      {
+        "name": "initial volume",
+        "label": "tube volume  [uL]",
+        "type": "number",
+        "default": "10"
+      },
+      {
+        "name": "residual volume",
+        "label": "residual volume [uL]",
+        "type": "number",
+        "default": "10"
+      },
+      {
+        "name": "measurement Volume",
+        "label": "volume of liquid measured simultaneously [uL]",
+        "type": "number",
+        "default": "10"
+      }
+      
+    ]
+  },
   "detector": {
-    "label": "Detector",
-    "description":"detector",
+    "label": "Spectrometer",
+    "description":"spectrometer",
     "properties": [
       {
         "name": "MQTTname",
