@@ -7,7 +7,7 @@ const cors = require('cors');
 
 // Configuration
 const MQTT_BROKER = 'mqtt://10.0.0.4:1883';
-const MQTT_TOPICS = ['common/device_response', 'common/#'];
+const MQTT_TOPICS = ['common/device_response', 'common/#', 'spectrometer_1/response/full_frame', 'spectrometer_1/response/crop_frame', 'spectrometer_1/response/data'];
 const WS_PORT = 4000;
 
 // Express setup
@@ -61,6 +61,12 @@ function subscribeToTopics() {
 function handleMQTTMessage(topic, message) {
   console.log(`MQTT message received on ${topic}`);
   
+  // Add extra logging for spectrometer topics
+  if (topic.includes('spectrometer') || topic.includes('response/full_frame')) {
+    console.log(`⭐ IMPORTANT: Spectrometer message on ${topic}`);
+    console.log(`⭐ Message payload preview:`, message.toString().substring(0, 200));
+  }
+  
   // Forward the message to all connected WebSocket clients
   const messageToSend = JSON.stringify({
     topic: topic,
@@ -103,6 +109,44 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      console.log('Received WebSocket message:', data.topic);
+      
+      // Handle special server/subscribe requests
+      if (data.topic === 'server/subscribe' && typeof data.payload === 'string') {
+        const topicToSubscribe = data.payload;
+        console.log(`Client requesting subscription to: ${topicToSubscribe}`);
+        
+        // Check if we're already subscribed
+        if (!MQTT_TOPICS.includes(topicToSubscribe)) {
+          // Add to our list
+          MQTT_TOPICS.push(topicToSubscribe);
+          console.log(`Added ${topicToSubscribe} to subscription list`);
+          
+          // Actually subscribe via MQTT client
+          if (mqttClient && mqttClient.connected) {
+            mqttClient.subscribe(topicToSubscribe, { qos: 1 }, (err) => {
+              if (err) {
+                console.error(`Failed to subscribe to ${topicToSubscribe}:`, err);
+              } else {
+                console.log(`Successfully subscribed to ${topicToSubscribe}`);
+                
+                // Send updated status to all clients
+                broadcastToWebSocketClients(JSON.stringify({
+                  topic: 'system/status',
+                  payload: {
+                    mqttConnected: mqttClient.connected,
+                    subscribedTopics: MQTT_TOPICS
+                  }
+                }));
+              }
+            });
+          }
+        } else {
+          console.log(`Already subscribed to ${topicToSubscribe}`);
+        }
+        
+        return; // Skip regular message handling
+      }
       
       if (data.topic && data.payload !== undefined) {
         if (mqttClient && mqttClient.connected) {

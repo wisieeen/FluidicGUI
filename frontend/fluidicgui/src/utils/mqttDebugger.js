@@ -73,12 +73,27 @@ export const createWebSocket = (url, options = {}) => {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        
+        // Check if payload is a string that looks like JSON and parse it
+        if (data.payload && typeof data.payload === 'string') {
+          try {
+            // Check if the string starts and ends with quotes (already serialized string)
+            if (data.payload.startsWith('"') && data.payload.endsWith('"')) {
+              // Remove the extra quotes
+              data.payload = JSON.parse(data.payload);
+            }
+          } catch (e) {
+            // If parsing fails, keep the original payload
+            console.log('Note: Payload is not a JSON string');
+          }
+        }
+        /*
         console.log('🔌 Received WebSocket message:', {
           topic: data.topic,
           payload: data.payload,
           timestamp: new Date().toISOString()
         });
-        
+        */
         // Handle system status messages
         if (data.topic === 'system/status') {
           console.log('🔌 MQTT Broker status:', {
@@ -175,7 +190,7 @@ export const setupMQTTDebugger = () => {
   };
   
   // Monkey patch console.log to highlight MQTT messages
-  const originalLog = console.log;
+  /*const originalLog = console.log;
   console.log = function(...args) {
     if (args.length > 0 && typeof args[0] === 'string') {
       if (args[0].includes('MQTT') || args[0].includes('device_')) {
@@ -183,7 +198,7 @@ export const setupMQTTDebugger = () => {
       }
     }
     originalLog.apply(console, args);
-  };
+  };*/
 };
 
 // Export default function to initialize everything

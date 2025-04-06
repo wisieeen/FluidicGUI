@@ -9,15 +9,14 @@ import { ButtonColorSchemeProvider } from './context/ColorSchemeContext';
 import { ButtonStyleProvider } from './styles/ButtonStyleProvider';
 import { WS_URL } from './config';
 import { createWebSocket, parseDeviceInfo, setupMQTTDebugger } from './utils/mqttDebugger';
+import USBSpectrometer from './components/Simulation/USBSpectrometer';
+import SpectrometerMQTT from './components/Simulation/SpectrometerMQTT';
 
 // Lazy load heavy components
 const Simulation = lazy(() => import('./components/Simulation/Simulation'));
 const ManualDropletCreation = lazy(() => import('./components/DropletGenerator/Manual/ManualDropletCreation'));
 const ResponseSurfaceGenerator = lazy(() => import('./components/DropletGenerator/ResponseSurfaceGenerator'));
 const InterpolationGenerator = lazy(() => import('./components/DropletGenerator/InterpolationGenerator'));
-
-// Lazy load USBSpectrometer component for direct access
-const USBSpectrometer = lazy(() => import('./components/Simulation/USBSpectrometer'));
 
 // For WebSocket connection
 const WebSocket = window.WebSocket || window.MozWebSocket;
@@ -63,6 +62,7 @@ const App = () => {
     // Setup spectrometer opening functionality
     const openSpectrometerNode = (nodeData) => {
       console.log('App.js: Opening spectrometer directly for node:', nodeData);
+      console.log('App.js: Using detectorId:', nodeData.MQTTname);
       
       // Generate sample readings for demo
       const generateSampleReadings = () => {
@@ -83,14 +83,15 @@ const App = () => {
         return readings;
       };
       
-      // Set the overlay component to USBSpectrometer
+      // Set the overlay component based on node type
       setOverlayComponent({
-        type: 'USBSpectrometer',
+        type: nodeData.type === 'MQTTSpectrometer' ? 'MQTTSpectrometer' : 'USBSpectrometer',
         props: {
           detector: nodeData,
           readings: generateSampleReadings(),
           onClose: () => setOverlayComponent(null),
-          initialPosition: { x: 50, y: 100 }
+          initialPosition: { x: 50, y: 100 },
+          detectorId: nodeData.MQTTname // Pass MQTTname as detectorId
         }
       });
     };
@@ -401,6 +402,11 @@ const App = () => {
                   {overlayComponent.type === 'USBSpectrometer' && (
                     <div style={{ pointerEvents: 'auto' }}>
                       <USBSpectrometer {...overlayComponent.props} />
+                    </div>
+                  )}
+                  {overlayComponent.type === 'MQTTSpectrometer' && (
+                    <div style={{ pointerEvents: 'auto' }}>
+                      <SpectrometerMQTT {...overlayComponent.props} />
                     </div>
                   )}
                 </Suspense>

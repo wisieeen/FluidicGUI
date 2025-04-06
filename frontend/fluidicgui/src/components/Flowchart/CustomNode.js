@@ -54,12 +54,24 @@ const CustomNode = ({ data, id, selected, onClick }) => {
     event.stopPropagation(); // Prevent node selection
     console.log("Opening spectrometer for node:", data);
     
+    // Find MQTTname from properties array if not directly on data object
+    let mqttName = data.MQTTname;
+    
+    // If MQTTname isn't directly on the data object, look for it in properties array
+    if (!mqttName && data.properties) {
+      const mqttNameProp = data.properties.find(prop => prop.name === 'MQTTname');
+      mqttName = mqttNameProp ? (data[mqttNameProp.name] || mqttNameProp.default) : undefined;
+    }
+    
     // Prepare the node data to send to the global handler
     const spectrometerNodeData = {
       id: id,
       label: data.label,
-      type: 'USBSpectrometer'
+      type: data.type === 'MQTTSpectrometer' ? 'MQTTSpectrometer' : 'USBSpectrometer',
+      MQTTname: mqttName
     };
+    
+    console.log("Sending spectrometer node data with MQTTname:", mqttName);
     
     // Use the global event system to communicate with App component
     if (window.customEvents && window.customEvents.openSpectrometer) {
@@ -218,15 +230,15 @@ const CustomNode = ({ data, id, selected, onClick }) => {
           <button style={buttonVariants.secondaryButton} onClick={toggleExpand}>
             {expanded ? '▼' : '▶'}
           </button>
-          {/* Add spectrometer button only if the node type is USBSpectrometer */}
-          {data.type === 'USBSpectrometer' && (
+          {/* Add spectrometer button for appropriate node types */}
+          {(data.type === 'USBSpectrometer' || data.type === 'MQTTSpectrometer') && (
             <button 
               style={{
                 ...buttonVariants.secondaryButton,
-                backgroundColor: '#AA00FF',
+                backgroundColor: data.type === 'MQTTSpectrometer' ? '#00AAFF' : '#AA00FF',
               }} 
               onClick={handleOpenSpectrometer}
-              title="Open Spectrometer View"
+              title={`Open ${data.type} View`}
             >
               📊
             </button>

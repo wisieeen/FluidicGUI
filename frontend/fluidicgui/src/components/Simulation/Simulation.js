@@ -21,6 +21,7 @@ import './simulation.css'; // We'll create this CSS file
 import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
 import USBSpectrometer from './USBSpectrometer';
+import SpectrometerMQTT from './SpectrometerMQTT';
 import { convertDetectorReading } from '../../utils/detectorCalculations';
 import { WS_URL } from '../../config';
 
@@ -1789,7 +1790,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     const handleOpenSpectrometer = (nodeData) => {
       console.log("Simulation: received openSpectrometer event with data:", nodeData);
       
-      if (nodeData && (nodeData.type === 'detector' || nodeData.type === 'USBSpectrometer')) {
+      if (nodeData && (nodeData.type === 'detector' || nodeData.type === 'USBSpectrometer' || nodeData.type === 'MQTTSpectrometer')) {
         // Find the full node data
         const fullNode = graphData.nodes.find(n => n.id === nodeData.id) || nodeData;
         console.log("Simulation: opening spectrometer with node:", fullNode);
@@ -2343,12 +2344,21 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       
       {/* Render detector panel if a detector is selected */}
       {selectedDetector && (
-        <USBSpectrometer 
-          detector={selectedDetector} 
-          readings={detectorReadings}
-          onClose={handleCloseDetectorPanel}
-          initialPosition={{ x: 50, y: 100 }}
-        />
+        selectedDetector.type === 'MQTTSpectrometer' ? (
+          <SpectrometerMQTT 
+            detector={selectedDetector} 
+            readings={detectorReadings}
+            onClose={handleCloseDetectorPanel}
+            initialPosition={{ x: 50, y: 100 }}
+          />
+        ) : (
+          <USBSpectrometer 
+            detector={selectedDetector} 
+            readings={detectorReadings}
+            onClose={handleCloseDetectorPanel}
+            initialPosition={{ x: 50, y: 100 }}
+          />
+        )
       )}
     </div>
   );

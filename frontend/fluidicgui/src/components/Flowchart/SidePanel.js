@@ -39,6 +39,15 @@ const SidePanel = ({ onAddNode, onImportFlow, nodes, edges, onProceed, onScanDev
       try {
         const data = JSON.parse(event.data);
         
+        // Check if payload is a string that looks like JSON and parse it
+        if (data.payload && typeof data.payload === 'string') {
+          // Check if the string starts and ends with quotes (already serialized string)
+          if (data.payload.startsWith('"') && data.payload.endsWith('"')) {
+            // Remove the extra quotes
+            data.payload = data.payload.substring(1, data.payload.length - 1);
+          }
+        }
+        
         // Check if this is a device response message
         if (data.topic === 'common/device_response') {
           console.log('Device response received in SidePanel:', data);

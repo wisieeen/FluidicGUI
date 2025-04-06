@@ -161,8 +161,8 @@
       
     ]
   },
-  "detector": {
-    "label": "Spectrometer",
+  "MQTTSpectrometer": {
+    "label": "MQTT Spectrometer",
     "description":"spectrometer",
     "properties": [
       {
