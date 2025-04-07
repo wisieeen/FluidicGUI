@@ -15,6 +15,13 @@ if (!window.customEvents) {
     setSpectrometerHandler: (handler) => {
       window.customEvents.openSpectrometer = handler;
       console.log('Spectrometer handler registered');
+    },
+    openPump: (node) => {
+      console.log('Global openPump called, but no handler is registered');
+    },
+    setPumpHandler: (handler) => {
+      window.customEvents.openPump = handler;
+      console.log('Pump handler registered');
     }
   };
 }
@@ -79,6 +86,39 @@ const CustomNode = ({ data, id, selected, onClick }) => {
       window.customEvents.openSpectrometer(spectrometerNodeData);
     } else {
       console.error("Global openSpectrometer handler not found");
+    }
+  };
+
+  // Handler for opening Pump control panel
+  const handleOpenPump = (event) => {
+    event.stopPropagation(); // Prevent node selection
+    console.log("Opening pump control for node:", data);
+    
+    // Find MQTTname from properties array if not directly on data object
+    let mqttName = data.MQTTname;
+    
+    // If MQTTname isn't directly on the data object, look for it in properties array
+    if (!mqttName && data.properties) {
+      const mqttNameProp = data.properties.find(prop => prop.name === 'MQTTname');
+      mqttName = mqttNameProp ? (data[mqttNameProp.name] || mqttNameProp.default) : undefined;
+    }
+    
+    // Prepare the node data to send to the global handler
+    const pumpNodeData = {
+      id: id,
+      label: data.label,
+      type: 'pump',
+      MQTTname: mqttName
+    };
+    
+    console.log("Sending pump node data with MQTTname:", mqttName);
+    
+    // Use the global event system to communicate with App component
+    if (window.customEvents && window.customEvents.openPump) {
+      console.log("Calling global openPump handler");
+      window.customEvents.openPump(pumpNodeData);
+    } else {
+      console.error("Global openPump handler not found");
     }
   };
 
@@ -241,6 +281,19 @@ const CustomNode = ({ data, id, selected, onClick }) => {
               title={`Open ${data.type} View`}
             >
               📊
+            </button>
+          )}
+          {/* Add pump button for pump node type */}
+          {data.type === 'pump' && (
+            <button 
+              style={{
+                ...buttonVariants.secondaryButton,
+                backgroundColor: '#4CAF50',
+              }} 
+              onClick={handleOpenPump}
+              title="Open Pump Control"
+            >
+              💧
             </button>
           )}
         </div>

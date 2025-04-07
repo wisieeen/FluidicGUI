@@ -11,6 +11,7 @@ import { WS_URL } from './config';
 import { createWebSocket, parseDeviceInfo, setupMQTTDebugger } from './utils/mqttDebugger';
 import USBSpectrometer from './components/Simulation/USBSpectrometer';
 import SpectrometerMQTT from './components/Simulation/SpectrometerMQTT';
+import PumpPanel from './components/Simulation/PumpPanel';
 
 // Lazy load heavy components
 const Simulation = lazy(() => import('./components/Simulation/Simulation'));
@@ -55,6 +56,13 @@ const App = () => {
         setSpectrometerHandler: (handler) => {
           window.customEvents.openSpectrometer = handler;
           console.log('Spectrometer handler registered');
+        },
+        openPump: (node) => {
+          console.log('Global openPump called, but no handler is registered yet');
+        },
+        setPumpHandler: (handler) => {
+          window.customEvents.openPump = handler;
+          console.log('Pump handler registered');
         }
       };
     }
@@ -96,18 +104,43 @@ const App = () => {
       });
     };
 
-    // Register the handler
+    // Setup pump opening functionality
+    const openPumpNode = (nodeData) => {
+      console.log('App.js: Opening pump control for node:', nodeData);
+      
+      // Set the overlay component for pump
+      setOverlayComponent({
+        type: 'PumpPanel',
+        props: {
+          pump: nodeData,
+          nodes: nodes,
+          edges: edges,
+          onClose: () => setOverlayComponent(null),
+          initialPosition: { x: 100, y: 150 },
+          onAction: (action) => {
+            console.log('Pump action in App.js:', action);
+            // Handle pump actions if needed
+          }
+        }
+      });
+    };
+
+    // Register the handlers
     window.customEvents.setSpectrometerHandler(openSpectrometerNode);
+    window.customEvents.setPumpHandler(openPumpNode);
 
     // Cleanup on unmount
     return () => {
       if (window.customEvents) {
         window.customEvents.setSpectrometerHandler(() => {
-          console.log('App component unmounted, handler reset');
+          console.log('App component unmounted, spectrometer handler reset');
+        });
+        window.customEvents.setPumpHandler(() => {
+          console.log('App component unmounted, pump handler reset');
         });
       }
     };
-  }, []);
+  }, [nodes, edges]);
 
   useEffect(() => {
     // Create WebSocket connection with auto-reconnect
@@ -303,6 +336,7 @@ const App = () => {
               onNavigate={handleNavigate} 
               simulationAvailable={simulationAvailable}
               hasDropletNode={hasDropletNode}
+              deviceCount={detectedDevices.length}
             />
             <div style={{ flex: 1, display: 'flex' }}>
               {step === 1 && (
@@ -407,6 +441,11 @@ const App = () => {
                   {overlayComponent.type === 'MQTTSpectrometer' && (
                     <div style={{ pointerEvents: 'auto' }}>
                       <SpectrometerMQTT {...overlayComponent.props} />
+                    </div>
+                  )}
+                  {overlayComponent.type === 'PumpPanel' && (
+                    <div style={{ pointerEvents: 'auto' }}>
+                      <PumpPanel {...overlayComponent.props} />
                     </div>
                   )}
                 </Suspense>

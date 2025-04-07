@@ -111,7 +111,44 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   }, [graphData.nodes]);
 
   const sendingEventsToDevices = () => {
-    sendEventsToDevices(pumpEvents, ws, nodes);
+    // Filter MQTT spectrometer events to handle them separately
+    const allEvents = recalculateEventListForDevices(pumpEvents);
+    const standardEvents = allEvents.filter(events => 
+      !events.some(event => event.isMQTTSpectrometer)
+    );
+    
+    // Handle regular events via WebSocket
+    sendEventsToDevices(standardEvents, ws, nodes);
+    
+    // Handle MQTT spectrometer events
+    const mqttEvents = allEvents.filter(events => 
+      events.some(event => event.isMQTTSpectrometer)
+    );
+    
+    if (mqttEvents.length > 0) {
+      console.log('Sending events to MQTT spectrometers:', mqttEvents);
+      // For each MQTT spectrometer event list
+      mqttEvents.forEach(eventList => {
+        if (eventList.length > 0 && eventList[0].mqttTopic) {
+          // Send via WebSocket with the MQTT topic
+          const message = {
+            topic: "common/publish",
+            destination: eventList[0].mqttTopic,
+            payload: JSON.stringify({
+              command: "sample_request",
+              timestamp: Date.now(),
+              events: eventList
+            })
+          };
+          
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(message));
+            console.log(`Sent MQTT event to ${eventList[0].mqttTopic}`);
+          }
+        }
+      });
+    }
+    
     // Reset simulation state
     setCurrentTime(0);
     setCurrentTimepoint(0);
@@ -121,7 +158,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     generateEventList([{ droplets: droplets }]);
   };
 
-  const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector", "USBSpectrometer"];
+  const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector", "USBSpectrometer", "MQTTSpectrometer"];
   const setOfSecondaryLineNodes = ['pump'];
   const eventType = ['setPumpSpeed', 'setThermostatTemperature', 'setLedIntensity', 'wait', 'blockEnd'];
 
@@ -329,6 +366,9 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     };
 
     const convertDetectorEvent = (event, deviceProperties) => {
+      // Check if this is for an MQTT spectrometer
+      const isMQTTSpectrometer = deviceProperties?.type === 'MQTTSpectrometer';
+      
       // Use the detector values in the event
       const reading = {
         value: event.value,
@@ -338,6 +378,23 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       // Use our detector calculations utility
       const processedReading = convertDetectorReading(reading, deviceProperties);
       
+      // For MQTT spectrometers, create a special format for MQTT topic
+      if (isMQTTSpectrometer) {
+        // Get MQTT name from properties or use default
+        const mqttName = deviceProperties?.MQTTname || 'spectrometer_1';
+        
+        return {
+          target: event.target,
+          time: Math.round(event.time * 1000000), // Convert to microseconds for hardware
+          setting: processedReading.calibratedValue,
+          rawValue: processedReading.rawValue,
+          unit: processedReading.unit,
+          mqttTopic: `${mqttName}/request/data`, // Use the appropriate topic for the spectrometer
+          isMQTTSpectrometer: true
+        };
+      }
+      
+      // Regular detector event format
       return {
         target: event.target,
         time: Math.round(event.time * 1000000), // Convert to microseconds for hardware
@@ -1152,25 +1209,53 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     const readings = [];
     const now = Date.now();
     
-    // Generate a sine wave with some noise for demo
-    for (let i = 0; i < 100; i++) {
-      const baseValue = Math.sin(i / 10) * 0.5 + 0.5; // 0 to 1 sine wave
-      const noise = Math.random() * 0.1; // Random noise
-      
-      readings.push({
-        value: baseValue + noise,
-        timestamp: now - (100 - i) * 100, // timestamps going backwards from now
-      });
-    }
+    // First check if we have a selected detector with specific type
+    const isMQTTSpectrometer = selectedDetector?.type === 'MQTTSpectrometer';
     
-    return readings;
+    if (isMQTTSpectrometer) {
+      // For MQTT spectrometers, generate wavelength and intensity data
+      const numPoints = 512;
+      const wavelengths = Array.from({ length: numPoints }, (_, i) => 350 + (750 - 350) * (i / (numPoints - 1)));
+      
+      // Generate a spectrum with some peaks
+      const intensities = wavelengths.map(w => {
+        // Create a few gaussian peaks
+        const peak1 = Math.exp(-Math.pow((w - 450) / 15, 2));
+        const peak2 = Math.exp(-Math.pow((w - 535) / 20, 2)) * 0.8;
+        const peak3 = Math.exp(-Math.pow((w - 650) / 25, 2)) * 0.6;
+        
+        // Add some noise
+        const noise = Math.random() * 0.05;
+        return (peak1 + peak2 + peak3 + noise) * 100; // Scale to reasonable values
+      });
+      
+      // Return the spectral data
+      return [{
+        timestamp: now,
+        wavelengths: wavelengths,
+        intensities: intensities
+      }];
+    } else {
+      // Generate a sine wave with some noise for standard detectors
+      for (let i = 0; i < 100; i++) {
+        const baseValue = Math.sin(i / 10) * 0.5 + 0.5; // 0 to 1 sine wave
+        const noise = Math.random() * 0.1; // Random noise
+        
+        readings.push({
+          value: baseValue + noise,
+          timestamp: now - (100 - i) * 100, // timestamps going backwards from now
+        });
+      }
+      
+      return readings;
+    }
   };
 
   const handleNodeClick = useCallback((node) => {
     console.log('handleNodeClick called with node:', node);
     if (node.type === 'pump') {
       setSelectedNode(node);
-    } else if (node.type === 'detector' || node.type === 'USBSpectrometer') {
+    } else if (node.type === 'detector' || node.type === 'USBSpectrometer' || node.type === 'MQTTSpectrometer') {
       console.log('Setting selected detector:', node);
       setSelectedDetector(node);
       // Generate sample readings for demo purposes
@@ -1195,8 +1280,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
         };
         
         // Add the onOpenSpectrometer handler for USBSpectrometer nodes
-        if (node.data.type === 'USBSpectrometer') {
-          console.log('Adding onOpenSpectrometer handler to node:', node.id);
+        if (node.data.type === 'USBSpectrometer' || node.data.type === 'MQTTSpectrometer') {
+          console.log(`Adding onOpenSpectrometer handler to ${node.data.type} node:`, node.id);
           graphNode.onOpenSpectrometer = (nodeData) => {
             console.log('onOpenSpectrometer called for node:', nodeData);
             handleNodeClick(nodeData);
@@ -2350,6 +2435,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
             readings={detectorReadings}
             onClose={handleCloseDetectorPanel}
             initialPosition={{ x: 50, y: 100 }}
+            detectorId={selectedDetector.data?.properties?.MQTTname || selectedDetector.MQTTname || 'spectrometer_1'}
+            detectorName={selectedDetector.label || selectedDetector.id}
           />
         ) : (
           <USBSpectrometer 
