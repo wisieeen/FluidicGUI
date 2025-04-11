@@ -4,13 +4,15 @@
 
 import { convertToHardwareValuesPump } from './pumpCalculations';
 
+export const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector", "USBSpectrometer", "MQTTSpectrometer"];
+export const setOfSecondaryLineNodes = ['pump'];
 /**
  * Find the outlet node in the graph
  * @param {Array} nodes - Array of graph nodes
  * @returns {Object|null} The outlet node or null if not found
  */
 export const findOutletNode = (nodes) => {
-  const outletNode = nodes.find(node => node.type === 'outlet');
+  const outletNode = nodes.filter(node => node !== undefined).find(node => node.type === 'outlet');
   if (!outletNode) {
     console.error('No outlet node found');
     return null;
@@ -66,7 +68,6 @@ export const findFurthestNode = (outletNode, nodes, links) => {
       queue.push([neighbor, distance + 1]);
     }
   }
-
   return furthestNode;
 };
 
@@ -84,17 +85,21 @@ export const orderNodesByDistance = (outletNode, nodes, links) => {
 
   while (queue.length > 0) {
     const [currentNode, distance] = queue.shift();
+    //console.log('currentNode: ', currentNode);
     if (!visited.has(currentNode.id)) {
       visited.add(currentNode.id);
       orderedNodes.push({ node: currentNode, distance });
       const neighbors = links
-        .filter(link => link.source === currentNode.id || link.target === currentNode.id)
+        .filter(link => link.target === currentNode.id)
         .map(link => link.source === currentNode.id ? link.target : link.source)
         .filter(nodeId => !visited.has(nodeId))
-        .map(nodeId => nodes.find(n => n.id === nodeId));
-
+        .map(nodeId => nodes.find(n => n.id === nodeId))
+        .filter(node => node !== undefined);
+      //console.log('neighbors: ', neighbors);
       for (const neighbor of neighbors) {
+
         queue.push([neighbor, distance + 1]);
+        
       }
     }
   }
@@ -107,8 +112,17 @@ export const orderNodesByDistance = (outletNode, nodes, links) => {
  * @returns {number} Volume of the edge in μL
  */
 export const calculateEdgeVolume = (edge) => {
-  const radius = edge.diameter / 2;
-  const volume = Math.PI * radius * radius * edge.length;
+  // Ensure properties exist or use default values
+  const diameter = edge.diameter || 1;
+  const length = edge.length || 100;
+  
+  // Log warning if properties are missing
+  if (!edge.diameter || !edge.length) {
+    console.warn('Edge missing properties:', edge);
+  }
+  
+  const radius = diameter / 2;
+  const volume = Math.PI * radius * radius * length;
   return volume;
 };
 
@@ -123,7 +137,6 @@ export const calculateEdgeVolume = (edge) => {
 export const getVolumeBetweenNodes = (startNodeId, endNodeId, nodes, links) => {
   const startNode = nodes.find(node => node.id === startNodeId);
   const endNode = nodes.find(node => node.id === endNodeId);
-  
   if (!startNode || !endNode) {
     console.error(`One or both nodes not found: ${startNodeId}, ${endNodeId}`);
     return null;
@@ -139,7 +152,7 @@ export const getVolumeBetweenNodes = (startNodeId, endNodeId, nodes, links) => {
     return null;
   }
 
-  const setOfMainLineNodes = ['connector', 'outlet', 'thermostat', "led", "detector"];
+  
   let nodesOfInterest = orderedNodes.slice(
     Math.min(startIndex, endIndex),
     Math.max(startIndex, endIndex) + 1
@@ -150,7 +163,6 @@ export const getVolumeBetweenNodes = (startNodeId, endNodeId, nodes, links) => {
   );
 
   let volume = 0;
-  
   for (let i = 0; i < nodesOfInterest.length - 1; i++) {
     const currentNode = nodesOfInterest[i].node;
     const nextNode = nodesOfInterest[i + 1].node;
@@ -159,7 +171,6 @@ export const getVolumeBetweenNodes = (startNodeId, endNodeId, nodes, links) => {
       (link.source === currentNode.id && link.target === nextNode.id) ||
       (link.target === currentNode.id && link.source === nextNode.id)
     );
-
     if (edge) {
       const edgeVolume = calculateEdgeVolume(edge);
       volume += edgeVolume;
