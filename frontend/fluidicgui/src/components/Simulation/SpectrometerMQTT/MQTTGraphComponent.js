@@ -15,6 +15,9 @@ const GraphComponent = React.forwardRef((props, ref) => {
   });
   const [graphData, setGraphData] = useState(null);
   
+  // Memory for storing graph data
+  const [memorizedData, setMemorizedData] = useState([]);
+  
   // Cursor tracking state
   const [cursorPosition, setCursorPosition] = useState(null);
   const [showCrosshair, setShowCrosshair] = useState(false);
@@ -23,7 +26,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
   const [frameAccumCount, setFrameAccumCount] = useState(10); // Default to 10 frames
   const [accumulatedFrames, setAccumulatedFrames] = useState([]);
   const [accumulatedData, setAccumulatedData] = useState(null);
-  const [isAccumulating, setIsAccumulating] = useState(true);
+  const [isAccumulating, setIsAccumulating] = useState(false);
   
   // Export file name prefix
   const [filePrefix, setFilePrefix] = useState('spectrum');
@@ -39,8 +42,8 @@ const GraphComponent = React.forwardRef((props, ref) => {
   // Calibration state
   const [showCalibration, setShowCalibration] = useState(false);
   const [calibrationPoints, setCalibrationPoints] = useState([
-    { position: 0.250, wavelength: 450 },
-    { position: 0.750, wavelength: 650 }
+    { position: 0.25000, wavelength: 450.0 },
+    { position: 0.75000, wavelength: 650.0 }
   ]);
   const [useCalibration, setUseCalibration] = useState(false);
   const [flipXAxis, setFlipXAxis] = useState(false);
@@ -78,6 +81,30 @@ const GraphComponent = React.forwardRef((props, ref) => {
         return true;
       } catch (error) {
         console.error('Error applying calibration settings:', error);
+        return false;
+      }
+    },
+    
+    getPeakSettings: () => ({
+      count: peakCount,
+      showMarkers: showPeakMarkers
+    }),
+    
+    applyPeakSettings: (settings) => {
+      if (!settings) return false;
+      
+      try {
+        if (typeof settings.count === 'number') {
+          setPeakCount(settings.count);
+        }
+        
+        if (typeof settings.showMarkers === 'boolean') {
+          setShowPeakMarkers(settings.showMarkers);
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Error applying peak settings:', error);
         return false;
       }
     }
@@ -124,6 +151,35 @@ const GraphComponent = React.forwardRef((props, ref) => {
       drawGraph(accumulatedData);
     }
   }, [accumulatedData, useCalibration, calibrationPoints, flipXAxis]);
+  
+  // Function to add current data to memory
+  const addToMemory = () => {
+    const dataToMemorize = isAccumulating ? accumulatedData : graphData;
+    
+    if (!dataToMemorize) {
+      setSaveMessage('No data to memorize');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+    
+    // Create a copy of the data with a timestamp
+    const memorizedItem = {
+      ...dataToMemorize,
+      memoryTimestamp: new Date().toISOString()
+    };
+    
+    // Add to memory array
+    setMemorizedData(prev => [...prev, memorizedItem]);
+    setSaveMessage(`Data added to memory (${memorizedData.length + 1} items)`);
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
+  
+  // Function to clear memory
+  const clearMemory = () => {
+    setMemorizedData([]);
+    setSaveMessage('Memory cleared');
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
   
   // Sum pixel data across multiple frames
   const sumFrameData = (frames) => {
@@ -952,7 +1008,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
   // Export settings to JSON file
   const exportSettings = () => {
     try {
-      // ...existing code...
+      // fill this gap
     } catch (error) {
       console.error('Failed to export settings:', error);
       setSaveMessage('Error exporting settings');
@@ -975,11 +1031,34 @@ const GraphComponent = React.forwardRef((props, ref) => {
     
     try {
       const lines = [];
+      // Create a timestamp string with units separated by semicolons: YYYY;MM;DD;hh;mm;ss
+      const now = new Date();
+      const timestamp = now.getFullYear() + ';' +
+        String(now.getMonth() + 1).padStart(2, '0') + ';' +
+        String(now.getDate()).padStart(2, '0') + ';' +
+        String(now.getHours()).padStart(2, '0') + ';' +
+        String(now.getMinutes()).padStart(2, '0') + ';' +
+        String(now.getSeconds()).padStart(2, '0');
+        
+      lines.push(timestamp);
       
-      // Add column headers as first line
-      const headers = useCalibration ? 
+      // Add information about memorized data if available
+      if (memorizedData.length > 0) {
+        lines.push(`Memory entries: ${memorizedData.length}`);
+      }
+      
+      // Add column headers with memory columns if available
+      let headers = useCalibration ? 
         "Wavelength (nm);Intensity;Red;Green;Blue" : 
         "Position;Intensity;Red;Green;Blue";
+      
+      // Add headers for memorized data
+      if (memorizedData.length > 0) {
+        memorizedData.forEach((_, index) => {
+          headers += `;Memory${index+1}_Intensity;Memory${index+1}_Red;Memory${index+1}_Green;Memory${index+1}_Blue`;
+        });
+      }
+      
       lines.push(headers);
       
       // Loop through data points
@@ -991,27 +1070,41 @@ const GraphComponent = React.forwardRef((props, ref) => {
           wavelength = positionToWavelength(position);
         }
         
-        // Get all channel values
+        // Get all channel values for current data
         const intensity = dataToExport.intensity[i];
         const red = dataToExport.red[i];
         const green = dataToExport.green[i];
         const blue = dataToExport.blue[i];
         
+        // Start the line with current data
+        let line = `${wavelength.toFixed(3)};${intensity.toFixed(2)};${red.toFixed(2)};${green.toFixed(2)};${blue.toFixed(2)}`;
+        
+        // Add memorized data if available
+        if (memorizedData.length > 0) {
+          memorizedData.forEach(memData => {
+            // Find the closest position in the memorized data
+            const memIndex = findNearestPositionIndex(memData.positions, position);
+            if (memIndex >= 0) {
+              const memIntensity = memData.intensity[memIndex];
+              const memRed = memData.red[memIndex];
+              const memGreen = memData.green[memIndex];
+              const memBlue = memData.blue[memIndex];
+              
+              // Add to the line
+              line += `;${memIntensity.toFixed(2)};${memRed.toFixed(2)};${memGreen.toFixed(2)};${memBlue.toFixed(2)}`;
+            } else {
+              // If no matching position found, add empty values
+              line += `;0;0;0;0`;
+            }
+          });
+        }
+        
         // Add line with all values
-        lines.push(`${wavelength.toFixed(2)};${intensity.toFixed(2)};${red.toFixed(2)};${green.toFixed(2)};${blue.toFixed(2)}`);
+        lines.push(line);
       }
       
       // Join lines with newlines
       const content = lines.join('\n');
-      
-      // Create a timestamp string in format YYYYMMDDhhmmss
-      const now = new Date();
-      const timestamp = now.getFullYear() +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        String(now.getDate()).padStart(2, '0') +
-        String(now.getHours()).padStart(2, '0') +
-        String(now.getMinutes()).padStart(2, '0') +
-        String(now.getSeconds()).padStart(2, '0');
       
       // Create filename with prefix and optional timestamp
       const fileName = includeDateInFilename ? 
@@ -1060,7 +1153,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
   
   // Load saved camera and calibration settings
   const loadSettings = () => {
-    // ... existing code ...
+    // fill this gap
   };
   
   // Handle peak count change
@@ -1137,12 +1230,17 @@ const GraphComponent = React.forwardRef((props, ref) => {
     },
     calibrationPoints: {
       display: 'flex',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: '10px'
+    },
+    calibrationPointsColumn: {
+      display: 'flex',
       flexDirection: 'column',
       gap: '6px'
     },
-    calibrationPoint: {
-      display: 'flex',
-      justifyContent: 'space-between',
+    calibrationPointsRow: {
+      display: 'flex', 
       alignItems: 'center',
       gap: '6px'
     },
@@ -1220,6 +1318,27 @@ const GraphComponent = React.forwardRef((props, ref) => {
       height: '100%',
       color: 'rgba(255, 255, 255, 0.5)',
       fontSize: '12px'
+    },
+    memoryButton: {
+      ...buttonVariants.smallIconButton,
+      backgroundColor: 'rgba(100, 160, 100, 0.7)',
+      marginRight: '5px',
+      fontSize: '11px',
+      padding: '3px 6px'
+    },
+    memoryButtons: {
+      display: 'flex',
+      alignItems: 'center',
+      marginRight: '5px',
+      borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+      paddingRight: '5px'
+    },
+    memoryCount: {
+      fontSize: '10px',
+      backgroundColor: 'rgba(80, 120, 80, 0.5)',
+      padding: '1px 5px',
+      borderRadius: '10px',
+      marginLeft: '5px'
     }
   };
   
@@ -1289,7 +1408,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
         <input 
           type="number" 
           min="1" 
-          max="100"
+          max="2000"
           value={frameAccumCount}
           onChange={handleFrameCountChange}
           style={styles.frameCountInput}
@@ -1304,6 +1423,8 @@ const GraphComponent = React.forwardRef((props, ref) => {
         >
           {isAccumulating ? "Accumulating" : "Live"}
         </button>
+
+        {/*button that pauses graph*/}
         
         {/* Peak markers control */}
         <div style={{ 
@@ -1338,6 +1459,34 @@ const GraphComponent = React.forwardRef((props, ref) => {
         
         {/* Add export controls */}
         <div style={{ display: 'flex', marginLeft: 'auto', alignItems: 'center', gap: '5px' }}>
+          {/* Add memory buttons */}
+          <div style={styles.memoryButtons}>
+            <button
+              style={styles.memoryButton}
+              onClick={addToMemory}
+              title="Save current graph data to memory"
+              disabled={!graphData && !accumulatedData}
+            >
+              To Memory
+            </button>
+            <button
+              style={{
+                ...styles.memoryButton,
+                backgroundColor: 'rgba(180, 80, 80, 0.7)'
+              }}
+              onClick={clearMemory}
+              title="Clear all memorized data"
+              disabled={memorizedData.length === 0}
+            >
+              Clear Memory
+            </button>
+            {memorizedData.length > 0 && (
+              <span style={styles.memoryCount}>
+                {memorizedData.length}
+              </span>
+            )}
+          </div>
+          
           <input
             type="text"
             value={filePrefix}
@@ -1410,38 +1559,50 @@ const GraphComponent = React.forwardRef((props, ref) => {
           </div>
           
           <div style={styles.calibrationPoints}>
-            {calibrationPoints.map((point, index) => (
-              <div key={index} style={styles.calibrationPoint}>
-                <div style={styles.calibrationLabel}>Point {index+1}:</div>
-                <div>
+            <div style={styles.calibrationPointsColumn}>
+              {calibrationPoints.map((point, index) => (
+                <div key={`point-${index}`} style={styles.calibrationPointsRow}>
+                  <div style={styles.calibrationLabel}>Point {index+1}:</div>
+                </div>
+              ))}
+            </div>
+            
+            <div style={styles.calibrationPointsColumn}>
+              {calibrationPoints.map((point, index) => (
+                <div key={`pos-${index}`} style={styles.calibrationPointsRow}>
                   <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)', marginRight: '4px' }}>Pos:</span>
                   <input 
                     type="number" 
                     min="0" 
                     max="1" 
-                    step="0.001"
+                    step="0.0001"
                     value={point.position}
                     onChange={(e) => updateCalibrationPoint(index, 'position', e.target.value)}
                     style={styles.calibrationInput}
                   />
                 </div>
-                <div>
+              ))}
+            </div>
+            
+            <div style={styles.calibrationPointsColumn}>
+              {calibrationPoints.map((point, index) => (
+                <div key={`wavelength-${index}`} style={styles.calibrationPointsRow}>
                   <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)', marginRight: '4px' }}>λ:</span>
                   <input 
                     type="number" 
-                    min="0" 
-                    max="2000" 
-                    step="1"
+                    min="200" 
+                    max="1200" 
+                    step="0.01"
                     value={point.wavelength}
                     onChange={(e) => updateCalibrationPoint(index, 'wavelength', e.target.value)}
                     style={styles.calibrationInput}
                   />
                   <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)', marginLeft: '2px' }}>nm</span>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
             
-            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
               <label style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)', display: 'flex', alignItems: 'center' }}>
                 <input 
                   type="checkbox" 
