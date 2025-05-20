@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import { useButtonStyles } from '../../../styles/ButtonStyleProvider';
 import { WS_URL } from '../../../config';
 import { floatingComponentStyles } from '../../../styles/FloatingComponentStyles';
+import spectralConfig from './spectral_config.json'; // Import spectral config
 
 // Constants for settings
 const SETTINGS_STORAGE_KEY = 'fluidicgui_settings';
@@ -150,6 +151,72 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
       };
     },
     
+    // Get just the crop frame settings
+    getCropSettings: () => {
+      return {
+        cropRange: cropRange,
+        cropInterval: cropInterval,
+        isCropMode: isCropMode,
+        isCropStreaming: isCropStreaming,
+        streamImage: streamCropImage,
+        toGraph: cropToGraph,
+        fullData: sendFullData
+      };
+    },
+    
+    // Apply crop settings from saved config
+    applyCropSettings: (settings) => {
+      if (!settings) return false;
+      
+      try {
+        // Apply crop range settings
+        if (settings.cropRange && Array.isArray(settings.cropRange) && settings.cropRange.length === 4) {
+          setCropRange(settings.cropRange);
+          
+          // If crop range is valid (not all zeros), enable crop mode
+          if (settings.cropRange.some(val => val !== 0)) {
+            setIsCropMode(true);
+          }
+        }
+        
+        // Apply crop interval
+        if (typeof settings.cropInterval === 'number') {
+          setCropInterval(settings.cropInterval);
+        }
+        
+        // Apply stream image setting if available
+        if (typeof settings.streamImage === 'boolean') {
+          setStreamCropImage(settings.streamImage);
+        }
+        
+        // Apply to graph setting if available
+        if (typeof settings.toGraph === 'boolean') {
+          setCropToGraph(settings.toGraph);
+        }
+        
+        // Apply full data setting if available
+        if (typeof settings.fullData === 'boolean') {
+          setSendFullData(settings.fullData);
+        }
+        
+        // Apply crop streaming state if explicitly set
+        if (typeof settings.isCropStreaming === 'boolean' && settings.isCropStreaming) {
+          // Only start streaming if we have a valid crop range and mqtt is connected
+          if (cropRange.some(val => val !== 0) && isMqttConnected) {
+            // Wait for next tick to ensure crop range is updated
+            setTimeout(() => {
+              startCropStreaming();
+            }, 500);
+          }
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Error applying crop settings:', error);
+        return false;
+      }
+    },
+    
     // Expose startCamera method to parent
     startCamera: async () => {
       if (!isCameraActive) {
@@ -189,6 +256,35 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
           if (width && height) {
             setImageAspectRatio(width / height);
           }
+        }
+
+        // Apply crop settings if available
+        if (settings.cropRange && Array.isArray(settings.cropRange) && settings.cropRange.length === 4) {
+          setCropRange(settings.cropRange);
+          
+          // Enable crop mode if we have a valid crop range
+          if (settings.cropRange.some(val => val !== 0)) {
+            setIsCropMode(true);
+          }
+        }
+        
+        if (typeof settings.cropInterval === 'number') {
+          setCropInterval(settings.cropInterval);
+        }
+        
+        // Apply stream image setting if available
+        if (typeof settings.streamImage === 'boolean') {
+          setStreamCropImage(settings.streamImage);
+        }
+        
+        // Apply to graph setting if available
+        if (typeof settings.toGraph === 'boolean') {
+          setCropToGraph(settings.toGraph);
+        }
+        
+        // Apply full data setting if available
+        if (typeof settings.fullData === 'boolean') {
+          setSendFullData(settings.fullData);
         }
         
         // If camera is not active OR if topic changed, start/restart connection
@@ -467,7 +563,8 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
           if (data.topic && data.topic.includes(mqttTopic) && 
               data.topic !== `${mqttTopic}/response/full_frame` && 
               data.topic !== `${mqttTopic}/response/crop_frame` && 
-              data.topic !== `${mqttTopic}/response/config`) {
+              data.topic !== `${mqttTopic}/response/config` &&
+              data.topic !== `${mqttTopic}/response/data`) {
             console.log(`[MQTTCamera] Unhandled topic received: ${data.topic}`, data);
           }
           
@@ -1104,6 +1201,93 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
   // State variables for camera settings
   const [cropToGraph, setCropToGraph] = useState(false);
   const [streamCropImage, setStreamCropImage] = useState(true); // Default to true for backward compatibility
+  const [sendFullData, setSendFullData] = useState(true); // Whether to send full data or only selected wavelength ranges
+  
+  // Function to calculate pixel range from wavelength range
+  const calculatePixelRangesFromWavelengths = () => {
+    // If we don't have calibration settings or crop range, return null
+    if (cropRange.every(val => val === 0)) {
+      return null;
+    }
+    
+    // Get the wavelength ranges from spectral config
+    const channelRanges = spectralConfig.CHANNEL_RANGES;
+    if (!channelRanges || !channelRanges.r || !channelRanges.g || !channelRanges.b) {
+      console.error("Invalid spectral config: missing channel ranges");
+      return null;
+    }
+    
+    // We need calibration points to map pixels to wavelengths
+    // Try to get calibration points from parent component
+    let minWavelength = 450; // Default min wavelength
+    let maxWavelength = 650; // Default max wavelength
+    let pixelRange = cropRange[2] - cropRange[0]; // Width of crop area
+    
+    // Try to get calibration settings from parent using props if available
+    if (props.getCalibrationSettings) {
+      try {
+        const calibrationSettings = props.getCalibrationSettings();
+        if (calibrationSettings && 
+            calibrationSettings.calibrationPoints && 
+            calibrationSettings.calibrationPoints.length >= 2) {
+          
+          const point1 = calibrationSettings.calibrationPoints[0];
+          const point2 = calibrationSettings.calibrationPoints[1];
+          
+          // Calculate wavelength per pixel
+          const wavelengthPerPixel = (point2.wavelength - point1.wavelength) / 
+                                    (point2.position * pixelRange - point1.position * pixelRange);
+          
+          // Calculate min and max wavelengths
+          minWavelength = point1.wavelength - (point1.position * pixelRange) * wavelengthPerPixel;
+          maxWavelength = point2.wavelength + (1 - point2.position) * pixelRange * wavelengthPerPixel;
+          
+          console.log("Using calibration settings:", {
+            minWavelength,
+            maxWavelength,
+            wavelengthPerPixel,
+            pixelRange
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to get calibration settings:", error);
+      }
+    }
+    
+    // Calculate pixel ranges for each channel
+    // We need to map wavelength ranges to pixel indices in crop area
+    const wavelengthToCropPixel = (wavelength) => {
+      // Map wavelength to pixel position within crop range
+      const normalizedPosition = (wavelength - minWavelength) / (maxWavelength - minWavelength);
+      const pixelIndex = Math.round(normalizedPosition * pixelRange);
+      return Math.max(0, Math.min(pixelRange - 1, pixelIndex));
+    };
+    
+    // Calculate pixel ranges for each channel
+    const redRange = [
+      wavelengthToCropPixel(channelRanges.r[0]),
+      wavelengthToCropPixel(channelRanges.r[1])
+    ];
+    
+    const greenRange = [
+      wavelengthToCropPixel(channelRanges.g[0]),
+      wavelengthToCropPixel(channelRanges.g[1])
+    ];
+    
+    const blueRange = [
+      wavelengthToCropPixel(channelRanges.b[0]),
+      wavelengthToCropPixel(channelRanges.b[1])
+    ];
+    
+    // Return pixel ranges for each channel as well as wavelength mapping info
+    return {
+      redRange,
+      greenRange,
+      blueRange,
+      wavelengthRange: [minWavelength, maxWavelength],
+      cropWidth: pixelRange
+    };
+  };
 
   // Start crop frame streaming
   const startCropStreaming = () => {
@@ -1126,15 +1310,43 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
       intervalRef.current = null;
     }
     
-    // Send crop request with interval in the payload - server will handle streaming
+    // Create the payload for the crop request
+    const payload = {
+      interval: cropInterval, // Pass actual interval to server
+      crop_range: cropRange,
+      to_graph: cropToGraph, // Add flag to indicate if the crop should be processed for graph
+      stream_image: streamCropImage, // Add flag to indicate if the image should be sent
+      full_data: sendFullData // Add flag to indicate if we want full data or selective channels
+    };
+    
+    // If we're not sending full data, calculate and add pixel ranges for each channel
+    if (!sendFullData) {
+      const pixelRanges = calculatePixelRangesFromWavelengths();
+      if (pixelRanges) {
+        // Add the pixel ranges to the payload
+        payload.channel_ranges = {
+          red: pixelRanges.redRange,
+          green: pixelRanges.greenRange,
+          blue: pixelRanges.blueRange
+        };
+        
+        // Add wavelength mapping information
+        payload.wavelength_range = pixelRanges.wavelengthRange;
+        
+        console.log("Sending crop request with channel ranges:", {
+          channelRanges: payload.channel_ranges,
+          wavelengthRange: payload.wavelength_range
+        });
+      } else {
+        console.warn("Could not calculate pixel ranges from wavelengths, using full data instead");
+        payload.full_data = true; // Fall back to full data if we can't calculate ranges
+      }
+    }
+    
+    // Send the crop request
     const message = {
       topic: `${mqttTopic}/request/crop_frame`,
-      payload: {
-        interval: cropInterval, // Pass actual interval to server
-        crop_range: cropRange,
-        to_graph: cropToGraph, // Add flag to indicate if the crop should be processed for graph
-        stream_image: streamCropImage // Add flag to indicate if the image should be sent
-      }
+      payload: payload
     };
     
     console.log(`Starting crop streaming with interval ${cropInterval}ms`, message);
@@ -1268,14 +1480,37 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
   const requestCroppedFrame = (range) => {
     if (!mqttClient || mqttClient.readyState !== WebSocket.OPEN) return;
     
+    // Create the payload for the crop request
+    const payload = {
+      interval: 0, // Single frame
+      crop_range: range,
+      to_graph: cropToGraph, // Add flag to indicate if the crop should be processed for graph
+      stream_image: streamCropImage, // Add flag to indicate if the image should be sent
+      full_data: sendFullData // Add flag to indicate if we want full data or selective channels
+    };
+    
+    // If we're not sending full data, calculate and add pixel ranges for each channel
+    if (!sendFullData) {
+      const pixelRanges = calculatePixelRangesFromWavelengths();
+      if (pixelRanges) {
+        // Add the pixel ranges to the payload
+        payload.channel_ranges = {
+          red: pixelRanges.redRange,
+          green: pixelRanges.greenRange,
+          blue: pixelRanges.blueRange
+        };
+        
+        // Add wavelength mapping information
+        payload.wavelength_range = pixelRanges.wavelengthRange;
+      } else {
+        console.warn("Could not calculate pixel ranges from wavelengths, using full data instead");
+        payload.full_data = true; // Fall back to full data if we can't calculate ranges
+      }
+    }
+    
     const message = {
       topic: `${mqttTopic}/request/crop_frame`,
-      payload: {
-        interval: 0, // Single frame
-        crop_range: range,
-        to_graph: cropToGraph, // Add flag to indicate if the crop should be processed for graph
-        stream_image: streamCropImage // Add flag to indicate if the image should be sent
-      }
+      payload: payload
     };
     
     mqttClient.send(JSON.stringify(message));
@@ -1445,6 +1680,17 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
             />
             To Graph
           </label>
+          
+          <label style={floatingComponentStyles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={sendFullData}
+              onChange={(e) => setSendFullData(e.target.checked)}
+              style={floatingComponentStyles.checkbox}
+              disabled={!isCameraActive}
+            />
+            Full Data
+          </label>
         </div>
         
         <div style={floatingComponentStyles.cropButtonGroup}>
@@ -1563,6 +1809,55 @@ const MQTTCameraComponent = React.forwardRef((props, ref) => {
             max="1600"
             step="100"
           />
+        </div>
+        
+        {/* White Balance Settings */}
+        <div style={floatingComponentStyles.configRow}>
+          <label style={floatingComponentStyles.configLabel}>Auto White Balance:</label>
+          <select
+            value={pendingConfig.camera.awb_enable !== undefined ? String(pendingConfig.camera.awb_enable) : "false"}
+            onChange={(e) => handleConfigChange('camera', 'awb_enable', e.target.value === "true")}
+            style={floatingComponentStyles.configInput}
+          >
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </div>
+        
+        {/* White Balance Red Gain - only enabled when AWB is off */}
+        <div style={floatingComponentStyles.configRow}>
+          <label style={floatingComponentStyles.configLabel}>WB Red Gain:</label>
+          <input 
+            type="range" 
+            min="0.5" 
+            max="2.5" 
+            step="0.1"
+            value={pendingConfig.camera.awb_red_gain || 1.0}
+            onChange={(e) => handleConfigChange('camera', 'awb_red_gain', parseFloat(e.target.value))}
+            style={{...floatingComponentStyles.configSlider, width: '70%'}}
+            disabled={pendingConfig.camera.awb_enable === true}
+          />
+          <span style={floatingComponentStyles.sliderValue}>
+            {parseFloat(pendingConfig.camera.awb_red_gain || 1.0).toFixed(1)}
+          </span>
+        </div>
+        
+        {/* White Balance Blue Gain - only enabled when AWB is off */}
+        <div style={floatingComponentStyles.configRow}>
+          <label style={floatingComponentStyles.configLabel}>WB Blue Gain:</label>
+          <input 
+            type="range" 
+            min="0.5" 
+            max="2.5" 
+            step="0.1"
+            value={pendingConfig.camera.awb_blue_gain || 1.0}
+            onChange={(e) => handleConfigChange('camera', 'awb_blue_gain', parseFloat(e.target.value))}
+            style={{...floatingComponentStyles.configSlider, width: '70%'}}
+            disabled={pendingConfig.camera.awb_enable === true}
+          />
+          <span style={floatingComponentStyles.sliderValue}>
+            {parseFloat(pendingConfig.camera.awb_blue_gain || 1.0).toFixed(1)}
+          </span>
         </div>
         
         <button 
@@ -2006,8 +2301,26 @@ const cropStyles = {
   },
 };
 
+// Add custom styles for white balance controls
+const whiteBalanceStyles = {
+  configSlider: {
+    height: '10px',
+    background: '#444',
+    outline: 'none',
+    appearance: 'none',
+    borderRadius: '5px',
+    cursor: 'pointer'
+  },
+  sliderValue: {
+    marginLeft: '10px',
+    width: '30px',
+    textAlign: 'right',
+    fontSize: '12px'
+  }
+};
+
 // Add the crop styles to the floatingComponentStyles object
-Object.assign(floatingComponentStyles, cropStyles);
+Object.assign(floatingComponentStyles, cropStyles, whiteBalanceStyles);
 
 // Add display name for debugging
 MQTTCameraComponent.displayName = 'MQTTCameraComponent';

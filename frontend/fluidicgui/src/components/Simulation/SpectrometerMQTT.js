@@ -4,6 +4,7 @@ import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 import styles from './styles/USBSpectrometerStyles';
 import { WS_URL } from '../../config'; // Import WS_URL
+import spectralConfig from './SpectrometerMQTT/spectral_config.json'; // Import spectral config
 
 // Import subcomponents
 import MQTTCameraComponent from './SpectrometerMQTT/MQTTCameraComponent';
@@ -199,20 +200,161 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
               setProcessedData(graphData);
               setUsingCropData(true);  // Flag that we're using crop data
             }
-            // Check if this is spectral data (wavelengths + intensities)
-            else if (parsedPayload.wavelengths && parsedPayload.intensities) {
-              console.log('[SpectrometerMQTT] Received spectral data');
+            else if (parsedPayload.red && parsedPayload.green && parsedPayload.blue ) {
+              console.log('[SpectrometerMQTT] Received processed graph data from crop');
+
+              // Get calibration data from graph component if available
+              let minWavelength = 450; // Default min wavelength
+              let maxWavelength = 650; // Default max wavelength
+              
+              // Try to use calibration points from graph component if it exists
+              if (graphRef.current && graphRef.current.getCalibrationSettings) {
+                const calibrationSettings = graphRef.current.getCalibrationSettings();
+                if (calibrationSettings.calibrationPoints && calibrationSettings.calibrationPoints.length >= 2) {
+                  const calibrationPoint1Position = calibrationSettings.calibrationPoints[0].position;
+                  const calibrationPoint2Position = calibrationSettings.calibrationPoints[1].position;
+                  const calibrationPoint1Wavelength = calibrationSettings.calibrationPoints[0].wavelength;
+                  const calibrationPoint2Wavelength = calibrationSettings.calibrationPoints[1].wavelength;
+                  // Get wavelengths from calibration points
+                  const wavelengthPerPosition = (calibrationPoint2Wavelength - calibrationPoint1Wavelength)/(calibrationPoint2Position - calibrationPoint1Position);
+                  minWavelength = calibrationPoint1Wavelength - calibrationPoint1Position * wavelengthPerPosition;
+                  maxWavelength = calibrationPoint2Wavelength + (1 - calibrationPoint2Position) * wavelengthPerPosition;
+                  console.log('[SpectrometerMQTT] Calibration settings:', calibrationSettings);
+                  
+                }
+              }
+              
+              
+              // Define channel wavelength ranges from spectral_config.json
+              const CHANNEL_RANGES = spectralConfig.CHANNEL_RANGES;
+              
+              // Map wavelengths to fit exactly within minWavelength and maxWavelength range
+              const mappedWavelengths = parsedPayload.wavelengths.map(w => {
+                // Scale the wavelength to fit in the calibrated range
+                return minWavelength + (w - parsedPayload.wavelengths[0]) / 
+                  (parsedPayload.wavelengths[parsedPayload.wavelengths.length - 1] - parsedPayload.wavelengths[0]) * 
+                  (maxWavelength - minWavelength);
+              });
+              
+              // Calculate intensity by selecting the appropriate channel based on mapped wavelength
+              const intensity = mappedWavelengths.map((wavelength, idx) => {
+                // Determine which channel to use based on wavelength
+                if (wavelength >= CHANNEL_RANGES.b[0] && wavelength < CHANNEL_RANGES.b[1]) {
+                  return parsedPayload.blue[idx]; // Blue channel
+                } else if (wavelength >= CHANNEL_RANGES.g[0] && wavelength < CHANNEL_RANGES.g[1]) {
+                  return parsedPayload.green[idx]; // Green channel
+                } else if (wavelength >= CHANNEL_RANGES.r[0] && wavelength <= CHANNEL_RANGES.r[1]) {
+                  return parsedPayload.red[idx]; // Red channel
+                } else {
+                  // Fallback to average if outside defined ranges
+                  return (parsedPayload.red[idx] + parsedPayload.green[idx] + parsedPayload.blue[idx]) / 3;
+                }
+              });
+              
+              // Transform data to expected format for the graph
+              const graphData = {
+                pixelData: {
+                  timestamp: parsedPayload.timestamp,
+                  positions: parsedPayload.wavelengths,
+                  red: parsedPayload.red,
+                  green: parsedPayload.green,
+                  blue: parsedPayload.blue,
+                  intensity: intensity,
+                  lineLength: parsedPayload.wavelengths.length
+                }
+              };
+              
+              setProcessedData(graphData);
+              setUsingCropData(true);  // Flag that we're using crop data
+            }
+            
+            // Check if this has raw data from crop
+            else if (parsedPayload.raw_data) {
+              console.log('[SpectrometerMQTT] Received raw pixel data from crop');
+              
+              // Process raw data based on data_type
+              if (parsedPayload.data_type === 'raw_mono') {
+                // Extract first row if raw_data is 2D array, otherwise use as is
+                const rawIntensity = Array.isArray(parsedPayload.raw_data[0]) ? 
+                  parsedPayload.raw_data[0] : parsedPayload.raw_data;
+                
+                const graphData = {
+                  pixelData: {
+                    timestamp: parsedPayload.timestamp,
+                    positions: parsedPayload.wavelengths,
+                    // Use raw data as the intensity values
+                    red: rawIntensity,
+                    green: rawIntensity,
+                    blue: rawIntensity,
+                    intensity: rawIntensity,
+                    lineLength: rawIntensity.length,
+                    isRawData: true,
+                    bitDepth: parsedPayload.bit_depth || 12,
+                    dataType: parsedPayload.data_type
+                  }
+                };
+                
+                setProcessedData(graphData);
+                setUsingCropData(true);
+              }
+            }
+            // Check if this is raw spectral data (wavelengths + raw channels)
+            else if (parsedPayload.wavelengths && (parsedPayload.raw_data || parsedPayload.raw_red)) {
+              console.log('[SpectrometerMQTT] Received raw spectral data');
               setSpectrumData(parsedPayload);
               
               // Only switch to spectral data if we're not actively using crop data
               if (!usingCropData) {
-                // Transform data to expected format for the graph components
+                // Create graph data format for raw data
+                const graphData = {
+                  pixelData: {
+                    timestamp: parsedPayload.timestamp || Date.now(),
+                    positions: parsedPayload.wavelengths,
+                    isRawData: true,
+                    bitDepth: parsedPayload.bit_depth || 12,
+                    dataType: parsedPayload.data_type
+                  }
+                };
+                
+                // Handle different raw data formats
+                if (parsedPayload.data_type === 'raw_mono' && parsedPayload.raw_data) {
+                  // For monochrome, use raw_data for all channels
+                  graphData.pixelData.red = parsedPayload.raw_data;
+                  graphData.pixelData.green = parsedPayload.raw_data;
+                  graphData.pixelData.blue = parsedPayload.raw_data;
+                  graphData.pixelData.intensity = parsedPayload.raw_data;
+                  graphData.pixelData.lineLength = parsedPayload.raw_data.length;
+                } 
+                else if ((parsedPayload.data_type === 'raw_rgb' || parsedPayload.data_type === 'raw_rgba') && 
+                         parsedPayload.raw_red && parsedPayload.raw_green && parsedPayload.raw_blue) {
+                  // For RGB, use separate channels
+                  graphData.pixelData.red = parsedPayload.raw_red;
+                  graphData.pixelData.green = parsedPayload.raw_green;
+                  graphData.pixelData.blue = parsedPayload.raw_blue;
+                  // Calculate intensity as average of RGB channels
+                  const intensity = parsedPayload.red.map((val, idx) => 
+                    (val + parsedPayload.green[idx] + parsedPayload.blue[idx]) / 3
+                  );
+                  graphData.pixelData.intensity = intensity;
+                  graphData.pixelData.lineLength = parsedPayload.raw_red.length;
+                }
+                
+                setProcessedData(graphData);
+              }
+            }
+            // Legacy support for traditional spectral data (wavelengths + intensities)
+            else if (parsedPayload.wavelengths && parsedPayload.intensities) {
+              console.log('[SpectrometerMQTT] Received traditional spectral data');
+              setSpectrumData(parsedPayload);
+              
+              // Only switch to spectral data if we're not actively using crop data
+              if (!usingCropData) {
+                // Normalize positions to 0-1 range
                 const wavelengthRange = [
                   Math.min(...parsedPayload.wavelengths), 
                   Math.max(...parsedPayload.wavelengths)
                 ];
                 
-                // Normalize positions to 0-1 range
                 const positions = parsedPayload.wavelengths.map(w => 
                   (w - wavelengthRange[0]) / (wavelengthRange[1] - wavelengthRange[0])
                 );
@@ -229,7 +371,8 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
                     green: intensity,
                     blue: intensity,
                     intensity: intensity,
-                    lineLength: intensity.length
+                    lineLength: intensity.length,
+                    isRawData: false
                   }
                 };
                 
@@ -301,10 +444,13 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       // Get camera settings
       const camSettings = cameraRef.current?.getSettings();
       
+      // Get crop frame settings
+      const cropSettings = cameraRef.current?.getCropSettings();
+      
       // Get calibration settings from graph component
       const calSettings = graphRef.current?.getCalibrationSettings();
       
-      if (!camSettings && !calSettings) {
+      if (!camSettings && !calSettings && !cropSettings) {
         console.warn('No settings to save - components may not be mounted');
         setSaveMessage('No settings to save');
         setTimeout(() => setSaveMessage(''), 3000);
@@ -315,12 +461,32 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       const settings = {
         camera: camSettings || null,
         calibration: calSettings || null,
+        cropFrame: cropSettings || null,
         timestamp: new Date().toISOString(),
         detectorId: detectorId || 'default',
         // Save waterfall settings
         waterfall: {
           colorScheme: waterfallColorScheme
-        }
+        },
+        // Save frame accumulation settings
+        frameAccumulation: {
+          count: frameAccumCount,
+          isEnabled: isAccumulating
+        },
+        // Save peak markers settings if available from graph component
+        peakMarkers: graphRef.current?.getPeakSettings?.() || {
+          count: 3,
+          showMarkers: true
+        },
+        // Save component visibility states
+        visibilityState: {
+          camera: showCamera,
+          graph: showGraph,
+          waterfall: showWaterfall,
+          settings: showSettings
+        },
+        // Save crop data state
+        usingCropData: usingCropData
       };
       
       // Save to localStorage
@@ -342,10 +508,13 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       // Get camera settings
       const camSettings = cameraRef.current?.getSettings();
       
+      // Get crop frame settings
+      const cropSettings = cameraRef.current?.getCropSettings();
+      
       // Get calibration settings from graph component
       const calSettings = graphRef.current?.getCalibrationSettings();
       
-      if (!camSettings && !calSettings) {
+      if (!camSettings && !calSettings && !cropSettings) {
         console.warn('No settings to export - components may not be mounted');
         setSaveMessage('No settings to export');
         setTimeout(() => setSaveMessage(''), 3000);
@@ -356,12 +525,32 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       const settings = {
         camera: camSettings || null,
         calibration: calSettings || null,
+        cropFrame: cropSettings || null,
         timestamp: new Date().toISOString(),
         detectorId: detectorId || 'default',
         // Export waterfall settings
         waterfall: {
           colorScheme: waterfallColorScheme
-        }
+        },
+        // Export frame accumulation settings
+        frameAccumulation: {
+          count: frameAccumCount,
+          isEnabled: isAccumulating
+        },
+        // Export peak markers settings if available from graph component
+        peakMarkers: graphRef.current?.getPeakSettings?.() || {
+          count: 3,
+          showMarkers: true
+        },
+        // Export component visibility states
+        visibilityState: {
+          camera: showCamera,
+          graph: showGraph,
+          waterfall: showWaterfall,
+          settings: showSettings
+        },
+        // Export crop data state
+        usingCropData: usingCropData
       };
       
       // Create a file name with timestamp
@@ -422,6 +611,15 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
         }
       }
       
+      // Apply crop frame settings if available
+      if (savedSettings.cropFrame && cameraRef.current?.applyCropSettings) {
+        try {
+          cameraRef.current.applyCropSettings(savedSettings.cropFrame);
+        } catch (err) {
+          console.error('Error applying crop frame settings:', err);
+        }
+      }
+      
       // Apply calibration settings if available
       if (savedSettings.calibration && graphRef.current) {
         try {
@@ -434,6 +632,46 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       // Apply waterfall settings if available
       if (savedSettings.waterfall?.colorScheme) {
         setWaterfallColorScheme(savedSettings.waterfall.colorScheme);
+      }
+      
+      // Apply frame accumulation settings if available
+      if (savedSettings.frameAccumulation) {
+        if (typeof savedSettings.frameAccumulation.count === 'number') {
+          setFrameAccumCount(savedSettings.frameAccumulation.count);
+        }
+        if (typeof savedSettings.frameAccumulation.isEnabled === 'boolean') {
+          setIsAccumulating(savedSettings.frameAccumulation.isEnabled);
+        }
+      }
+      
+      // Apply peak markers settings if available
+      if (savedSettings.peakMarkers && graphRef.current?.applyPeakSettings) {
+        try {
+          graphRef.current.applyPeakSettings(savedSettings.peakMarkers);
+        } catch (err) {
+          console.error('Error applying peak markers settings:', err);
+        }
+      }
+      
+      // Apply component visibility state if available
+      if (savedSettings.visibilityState) {
+        if (typeof savedSettings.visibilityState.camera === 'boolean') {
+          setShowCamera(savedSettings.visibilityState.camera);
+        }
+        if (typeof savedSettings.visibilityState.graph === 'boolean') {
+          setShowGraph(savedSettings.visibilityState.graph);
+        }
+        if (typeof savedSettings.visibilityState.waterfall === 'boolean') {
+          setShowWaterfall(savedSettings.visibilityState.waterfall);
+        }
+        if (typeof savedSettings.visibilityState.settings === 'boolean') {
+          setShowSettings(savedSettings.visibilityState.settings);
+        }
+      }
+      
+      // Apply crop data state if available
+      if (typeof savedSettings.usingCropData === 'boolean') {
+        setUsingCropData(savedSettings.usingCropData);
       }
       
       // Make sure camera is started automatically
@@ -487,6 +725,15 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
               }
             }
             
+            // Apply crop frame settings if available
+            if (importedSettings.cropFrame && cameraRef.current?.applyCropSettings) {
+              try {
+                cameraRef.current.applyCropSettings(importedSettings.cropFrame);
+              } catch (err) {
+                console.error('Error applying imported crop frame settings:', err);
+              }
+            }
+            
             // Apply calibration settings if available
             if (importedSettings.calibration && graphRef.current) {
               try {
@@ -499,6 +746,46 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
             // Apply waterfall settings if available
             if (importedSettings.waterfall?.colorScheme) {
               setWaterfallColorScheme(importedSettings.waterfall.colorScheme);
+            }
+            
+            // Apply frame accumulation settings if available
+            if (importedSettings.frameAccumulation) {
+              if (typeof importedSettings.frameAccumulation.count === 'number') {
+                setFrameAccumCount(importedSettings.frameAccumulation.count);
+              }
+              if (typeof importedSettings.frameAccumulation.isEnabled === 'boolean') {
+                setIsAccumulating(importedSettings.frameAccumulation.isEnabled);
+              }
+            }
+            
+            // Apply peak markers settings if available
+            if (importedSettings.peakMarkers && graphRef.current?.applyPeakSettings) {
+              try {
+                graphRef.current.applyPeakSettings(importedSettings.peakMarkers);
+              } catch (err) {
+                console.error('Error applying peak markers settings:', err);
+              }
+            }
+            
+            // Apply component visibility state if available
+            if (importedSettings.visibilityState) {
+              if (typeof importedSettings.visibilityState.camera === 'boolean') {
+                setShowCamera(importedSettings.visibilityState.camera);
+              }
+              if (typeof importedSettings.visibilityState.graph === 'boolean') {
+                setShowGraph(importedSettings.visibilityState.graph);
+              }
+              if (typeof importedSettings.visibilityState.waterfall === 'boolean') {
+                setShowWaterfall(importedSettings.visibilityState.waterfall);
+              }
+              if (typeof importedSettings.visibilityState.settings === 'boolean') {
+                setShowSettings(importedSettings.visibilityState.settings);
+              }
+            }
+            
+            // Apply crop data state if available
+            if (typeof importedSettings.usingCropData === 'boolean') {
+              setUsingCropData(importedSettings.usingCropData);
             }
             
             // Make sure camera is started automatically

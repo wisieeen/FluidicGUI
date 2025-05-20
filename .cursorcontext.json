@@ -1,0 +1,80 @@
+{
+  "project": {
+    "name": "fluidicGUI",
+    "type": "Full-stack (React/Node.js/MQTT)",
+    "description": "A modular, extensible GUI for fluidic device simulation and control, with real-time device integration.",
+    "structure": [
+      "frontend/fluidicgui/src/components/*: Feature-based React components",
+      "frontend/fluidicgui/src/context: Context providers (e.g., color scheme)",
+      "frontend/fluidicgui/src/utils: Utility modules for simulation, MQTT, etc.",
+      "backend/server.js: Express/MQTT/WebSocket server",
+      "assets/: Static images"
+    ],
+    "build": [
+      "frontend/fluidicgui/package.json: React app dependencies/scripts",
+      "backend/package.json: Backend dependencies/scripts"
+    ]
+  },
+  "features": [
+    {
+      "name": "Flowchart Editor",
+      "entryPoint": "NavigationBar (step 1), App.js",
+      "workflow": "User creates/edits nodes and edges, configures properties, saves/loads flowcharts.",
+      "components": ["FlowchartEditor", "CustomNode", "CustomEdge", "SidePanel"],
+      "state": "React state, context for color schemes",
+      "errorStates": ["No outlet node", "Missing node properties"],
+      "loadingStates": [],
+      "dependencies": ["react-flow-renderer", "context", "utils"]
+    },
+    {
+      "name": "Simulation",
+      "entryPoint": "NavigationBar (step 7), App.js",
+      "workflow": "User runs simulation, interacts with pumps/spectrometers, views results.",
+      "components": ["Simulation", "DraggablePanel", "USBSpectrometer", "SpectrometerMQTT"],
+      "state": "Local state, utility functions",
+      "errorStates": ["No devices", "WebSocket errors"],
+      "loadingStates": ["LoadingSimulation"],
+      "dependencies": ["WebSocket", "utils"]
+    }
+  ],
+  "components": [
+    {
+      "name": "FlowchartEditor",
+      "responsibility": "Visual node/edge editor for fluidic workflows.",
+      "props": ["nodes", "edges", "onAddNode", "onNodesChange", "onEdgesChange", "onProceed", "onScanDevices", "detectedDevices"],
+      "state": ["selectedNodes", "contextMenuPosition", "showContextMenu"],
+      "children": ["CustomNode", "CustomEdge", "SidePanel"],
+      "eventHandlers": ["handleNodeClick", "handleContextMenu", "handlePropertyChange"],
+      "keyFunctions": ["Node/edge manipulation", "import/export"],
+      "errorHandling": ["Console warnings", "UI fallbacks"],
+      "performance": ["Memoization", "efficient state updates"],
+      "description": "Allows users to visually construct and edit fluidic device workflows."
+    }
+  ],
+  "stateManagement": [
+    {
+      "store": "ColorSchemeContext",
+      "purpose": "Provide and update button color schemes.",
+      "structure": "{ buttonColorScheme, updateButtonColorScheme }",
+      "actions": ["updateButtonColorScheme(scheme)"],
+      "selectors": ["useButtonColorScheme()"],
+      "integration": "Used in NavigationBar, button styling.",
+      "dataFlow": "Context provider at app root, consumed by components."
+    }
+  ],
+  "utilities": [
+    {
+      "file": "simulationUtils.js",
+      "purpose": "Graph traversal, volume calculations, event generation for simulation."
+    }
+  ],
+  "codeStandards": [
+    "DRY, KISS, modular React components, context for shared state, utility modules for logic, error handling via console and UI fallbacks."
+  ],
+  "security": [
+    "CORS enabled on backend, but no authentication/authorization. WebSocket and MQTT are open to local network."
+  ],
+  "performance": [
+    "Lazy loading for heavy components, memoization, efficient state updates, minimal re-renders."
+  ]
+} 

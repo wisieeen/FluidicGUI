@@ -211,7 +211,12 @@ const GraphComponent = React.forwardRef((props, ref) => {
       blue: summedBlue,
       intensity: summedIntensity,
       lineLength: template.lineLength,
-      frameCount: frames.length // Add count of frames that were summed
+      frameCount: frames.length, // Add count of frames that were summed
+      
+      // Preserve raw data metadata if present in template
+      isRawData: template.isRawData || false,
+      bitDepth: template.bitDepth || null,
+      dataType: template.dataType || null
     };
   };
   
@@ -604,28 +609,56 @@ const GraphComponent = React.forwardRef((props, ref) => {
       ctx.fillText(`Summed ${data.frameCount} frames`, width - 150, 30);
     }
     
+    // Draw raw data and bit depth information if available
+    if (data.isRawData) {
+      const bitDepth = data.bitDepth || 12;
+      const dataType = data.dataType || 'raw';
+      ctx.fillStyle = 'rgba(255, 200, 100, 0.9)';
+      ctx.fillText(`RAW ${bitDepth}-bit | ${dataType}`, 5, 60);
+    }
+    
     // Draw channel legend
     const legendStartY = 30;
     const legendSpacing = 15;
     
     if (displayChannels.red) {
       ctx.fillStyle = styles.red.color;
-      ctx.fillText(`Red: ${Math.round(data.red.reduce((a, b) => a + b, 0) / data.red.length)}`, 5, legendStartY);
+      // For raw data, show max value as well
+      if (data.isRawData) {
+        ctx.fillText(`Red: ${Math.round(data.red.reduce((a, b) => a + b, 0) / data.red.length)} (max: ${Math.round(maxRed)})`, 5, legendStartY);
+      } else {
+        ctx.fillText(`Red: ${Math.round(data.red.reduce((a, b) => a + b, 0) / data.red.length)}`, 5, legendStartY);
+      }
     }
     
     if (displayChannels.green) {
       ctx.fillStyle = styles.green.color;
-      ctx.fillText(`Green: ${Math.round(data.green.reduce((a, b) => a + b, 0) / data.green.length)}`, 5, legendStartY + legendSpacing);
+      // For raw data, show max value as well
+      if (data.isRawData) {
+        ctx.fillText(`Green: ${Math.round(data.green.reduce((a, b) => a + b, 0) / data.green.length)} (max: ${Math.round(maxGreen)})`, 5, legendStartY + legendSpacing);
+      } else {
+        ctx.fillText(`Green: ${Math.round(data.green.reduce((a, b) => a + b, 0) / data.green.length)}`, 5, legendStartY + legendSpacing);
+      }
     }
     
     if (displayChannels.blue) {
       ctx.fillStyle = styles.blue.color;
-      ctx.fillText(`Blue: ${Math.round(data.blue.reduce((a, b) => a + b, 0) / data.blue.length)}`, 5, legendStartY + legendSpacing * 2);
+      // For raw data, show max value as well
+      if (data.isRawData) {
+        ctx.fillText(`Blue: ${Math.round(data.blue.reduce((a, b) => a + b, 0) / data.blue.length)} (max: ${Math.round(maxBlue)})`, 5, legendStartY + legendSpacing * 2);
+      } else {
+        ctx.fillText(`Blue: ${Math.round(data.blue.reduce((a, b) => a + b, 0) / data.blue.length)}`, 5, legendStartY + legendSpacing * 2);
+      }
     }
     
     if (displayChannels.intensity) {
       ctx.fillStyle = styles.intensity.color;
-      ctx.fillText(`Intensity: ${(data.intensity.reduce((a, b) => a + b, 0) / data.intensity.length).toFixed(2)}`, 5, legendStartY + legendSpacing * 3);
+      // For raw data, show max value as well
+      if (data.isRawData) {
+        ctx.fillText(`Intensity: ${(data.intensity.reduce((a, b) => a + b, 0) / data.intensity.length).toFixed(2)} (max: ${Math.round(maxIntensity)})`, 5, legendStartY + legendSpacing * 3);
+      } else {
+        ctx.fillText(`Intensity: ${(data.intensity.reduce((a, b) => a + b, 0) / data.intensity.length).toFixed(2)}`, 5, legendStartY + legendSpacing * 3);
+      }
     }
     
     // Draw wavelength axis labels if calibration is enabled (unified section)
@@ -1042,9 +1075,21 @@ const GraphComponent = React.forwardRef((props, ref) => {
         
       lines.push(timestamp);
       
+      // Add raw data metadata if available
+      if (dataToExport.isRawData) {
+        const bitDepth = dataToExport.bitDepth || 12;
+        const dataType = dataToExport.dataType || 'raw';
+        lines.push(`# RAW DATA: ${bitDepth}-bit, type: ${dataType}`);
+      }
+      
+      // Add information about frame accumulation
+      if (dataToExport.frameCount) {
+        lines.push(`# Accumulated frames: ${dataToExport.frameCount}`);
+      }
+      
       // Add information about memorized data if available
       if (memorizedData.length > 0) {
-        lines.push(`Memory entries: ${memorizedData.length}`);
+        lines.push(`# Memory entries: ${memorizedData.length}`);
       }
       
       // Add column headers with memory columns if available
@@ -1107,9 +1152,17 @@ const GraphComponent = React.forwardRef((props, ref) => {
       const content = lines.join('\n');
       
       // Create filename with prefix and optional timestamp
-      const fileName = includeDateInFilename ? 
-        `${filePrefix}_${timestamp}.txt` : 
-        `${filePrefix}.txt`;
+      // For raw data, add raw indicator to filename
+      let fileName = '';
+      if (dataToExport.isRawData) {
+        fileName = includeDateInFilename ? 
+          `${filePrefix}_RAW${dataToExport.bitDepth || 12}bit_${timestamp}.txt` : 
+          `${filePrefix}_RAW${dataToExport.bitDepth || 12}bit.txt`;
+      } else {
+        fileName = includeDateInFilename ? 
+          `${filePrefix}_${timestamp}.txt` : 
+          `${filePrefix}.txt`;
+      }
       
       // Create Blob with content
       const blob = new Blob([content], { type: 'text/plain' });
