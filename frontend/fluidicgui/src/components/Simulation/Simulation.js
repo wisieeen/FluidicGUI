@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { ReactFlowProvider, useNodesState, useEdgesState } from 'react-flow-renderer';
 import PumpActions from './NodeActions/PumpActions';
 import DraggablePanel from './DraggablePanel';
 import { convertToHardwareValuesPump } from '../../utils/pumpCalculations';
@@ -24,6 +25,7 @@ import SvgDefs from './SvgDefs';
 import { calculateEdgePoints, createLabels } from '../../utils/flowchartUtils';
 import USBSpectrometer from './USBSpectrometer';
 import SpectrometerMQTT from './SpectrometerMQTT';
+import PumpPanel from './PumpPanel';
 
 const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPumps = [], onBack, onNext }) => {
   const buttonVariants = useButtonStyles();
@@ -51,6 +53,9 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const [ws, setWs] = useState(null);
   const [pumpPanelPosition, setPumpPanelPosition] = useState({ x: window.innerWidth - 300, y: 100 });
   const [visiblePumpPanel, setVisiblePumpPanel] = useState(null);
+  const [isSendingEvents, setIsSendingEvents] = useState(false);
+  const graphRefs = useRef({});
+  const [overlayComponent, setOverlayComponent] = useState(null);
 
   // Add at the beginning of the component, after the state initialization
   useEffect(() => {
@@ -88,6 +93,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   }, []);
 
   const sendingEventsToDevices = () => {
+    setIsSendingEvents(true);
     sendEventsToDevices(pumpEvents, ws, nodes);
     // Reset simulation state
     setCurrentTime(0);
@@ -97,6 +103,18 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     // Generate new event list
     generateEventList([{ droplets: droplets }]);
   };
+
+  // Add effect to handle automatic memory addition when events are being sent
+  useEffect(() => {
+    if (isSendingEvents) {
+      // Get all graph refs and add data to memory
+      Object.values(graphRefs.current).forEach(graphRef => {
+        if (graphRef && graphRef.current && graphRef.current.addToMemory) {
+          graphRef.current.addToMemory();
+        }
+      });
+    }
+  }, [isSendingEvents]);
 
   const eventType = ['setPumpSpeed', 'setThermostatTemperature', 'setLedIntensity', 'wait', 'blockEnd'];
 
@@ -441,11 +459,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       
     });
 
-    orderedNodes.filter(node => node.node.type !== 'pump' ).forEach(pump => {
-      
-    });
-
-
+    
     let position = -0.001;
     //prepares all droplets in block and calculates some parameters
     currentBlockDroplets.forEach(droplet => {
@@ -1466,6 +1480,13 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       setSelectedNode(node);
       console.log('Selected node set:', node.id, nodeType);
     }
+    if (node.type === 'detector' || node.type === 'USBSpectrometer' || node.type === 'MQTTSpectrometer') {
+      // Store the graph ref when opening a spectrometer
+      const graphRef = React.createRef();
+      graphRefs.current[node.id] = graphRef;
+      
+      // ... rest of the existing handleNodeClick code ...
+    }
   };
 
   const handleNodeAction = (action) => {
@@ -2226,6 +2247,52 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
         `}
       </style>
+      {overlayComponent && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9999,
+          pointerEvents: 'none'
+        }}>
+          <Suspense fallback={
+            <div style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: 'rgba(0,0,0,0.8)',
+              padding: '20px',
+              borderRadius: '8px',
+              color: 'white',
+              pointerEvents: 'auto'
+            }}>
+              <h2>Loading Component...</h2>
+            </div>
+          }>
+            {overlayComponent.type === 'USBSpectrometer' && (
+              <div style={{ pointerEvents: 'auto' }}>
+                <USBSpectrometer {...overlayComponent.props} />
+              </div>
+            )}
+            {overlayComponent.type === 'MQTTSpectrometer' && (
+              <div style={{ pointerEvents: 'auto' }}>
+                <SpectrometerMQTT 
+                  {...overlayComponent.props} 
+                  graphRef={graphRefs.current[overlayComponent.props.detector.id]}
+                />
+              </div>
+            )}
+            {overlayComponent.type === 'PumpPanel' && (
+              <div style={{ pointerEvents: 'auto' }}>
+                <PumpPanel {...overlayComponent.props} />
+              </div>
+            )}
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 };

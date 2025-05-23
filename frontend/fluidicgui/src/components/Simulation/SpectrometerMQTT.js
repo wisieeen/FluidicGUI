@@ -51,7 +51,7 @@ const waterfallColorSchemeOptions = {
   turbo: 'Turbo'
 };
 
-const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus }) => {
+const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus, graphRef }) => {
   const buttonVariants = useButtonStyles();
   const [detectorReadings, setDetectorReadings] = useState([]);
   
@@ -93,7 +93,6 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
   const wsRef = useRef(null); // Ref to hold the WebSocket instance
   const mqttTopicRef = useRef('spectrometer_1'); // Ref to hold the current MQTT topic
   const cameraRef = useRef(null);
-  const graphRef = useRef(null);
   
   // Handle frame accumulation change
   const handleFrameAccumCountChange = (count) => {
@@ -1063,8 +1062,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
               <MQTTGraphComponent 
                 ref={graphRef}
                 onResize={handleGraphResize}
-                lineData={processedData}  // Use processedData instead of spectrumData
-                // Pass the frame accumulation props up to parent to manage
+                lineData={processedData}
                 onFrameAccumCountChange={handleFrameAccumCountChange}
                 onAccumulationToggle={handleAccumulationToggle}
               />

@@ -107,6 +107,29 @@ const GraphComponent = React.forwardRef((props, ref) => {
         console.error('Error applying peak settings:', error);
         return false;
       }
+    },
+
+    // Expose addToMemory function
+    addToMemory: () => {
+      const dataToMemorize = isAccumulating ? accumulatedData : graphData;
+      
+      if (!dataToMemorize) {
+        setSaveMessage('No data to memorize');
+        setTimeout(() => setSaveMessage(''), 3000);
+        return false;
+      }
+      
+      // Create a copy of the data with a timestamp
+      const memorizedItem = {
+        ...dataToMemorize,
+        memoryTimestamp: new Date().toISOString()
+      };
+      
+      // Add to memory array
+      setMemorizedData(prev => [...prev, memorizedItem]);
+      setSaveMessage(`Data added to memory (${memorizedData.length + 1} items)`);
+      setTimeout(() => setSaveMessage(''), 3000);
+      return true;
     }
   }));
   
