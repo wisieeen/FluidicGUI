@@ -41,6 +41,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const [dropletHistory, setDropletHistory] = useState([]);
   const [currentTimepoint, setCurrentTimepoint] = useState(0);
   const [pumpEvents, setPumpEvents] = useState([]);
+  const [detectorEvents, setDetectorEvents] = useState([]);
   const [displayPumpSpeeds, setDisplayPumpSpeeds] = useState(false);
   const [displayNodeIds, setDisplayNodeIds] = useState(false);
   const [displayDropletInfo, setDisplayDropletInfo] = useState(false);
@@ -48,6 +49,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const [displayEdgeLabels, setDisplayEdgeLabels] = useState(false);
   const [isDisplayMenuOpen, setDisplayMenuOpen] = useState(false);
   const [displayTimelineDropletInfo, setDisplayTimelineDropletInfo] = useState(false);
+  const [displayDetectorEvents, setDisplayDetectorEvents] = useState(false);
   const displayMenuRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [ws, setWs] = useState(null);
@@ -95,6 +97,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const sendingEventsToDevices = () => {
     setIsSendingEvents(true);
     sendEventsToDevices(pumpEvents, ws, nodes);
+    // Send measurement timepoints to spectrometers
+    sendMeasurementTimepointsToSpectrometers(detectorEvents, ws, nodes);
     // Reset simulation state
     setCurrentTime(0);
     setCurrentTimepoint(0);
@@ -102,6 +106,58 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     setDropletHistory([]);
     // Generate new event list
     generateEventList([{ droplets: droplets }]);
+  };
+
+  // Add function to send measurement timepoints to spectrometers via MQTT
+  const sendMeasurementTimepointsToSpectrometers = (detectorEvents, websocket, nodes) => {
+    if (!websocket || !detectorEvents || !nodes) {
+      console.warn('Missing required parameters for sending measurement timepoints');
+      return;
+    }
+
+    // Group detector events by detector/spectrometer ID
+    const eventsByDetector = detectorEvents.reduce((acc, event) => {
+      if (!acc[event.target]) {
+        acc[event.target] = [];
+      }
+      acc[event.target].push(event);
+      return acc;
+    }, {});
+
+    // Send timepoints to each spectrometer
+    Object.entries(eventsByDetector).forEach(([detectorId, events]) => {
+      const detectorNode = nodes.find(node => node.id === detectorId);
+      
+      // Check if this is an MQTT spectrometer
+      if (detectorNode && (detectorNode.type === 'MQTTSpectrometer' || detectorNode.data?.type === 'MQTTSpectrometer')) {
+        // Extract MQTT name from detector properties
+        const mqttName = detectorNode.data?.properties?.find(prop => prop.name === 'mqttName')?.value || 
+                        detectorNode.data?.properties?.find(prop => prop.name === 'mqtt_name')?.value ||
+                        detectorId; // fallback to detector ID
+        
+        // Extract timepoints from events (convert to milliseconds)
+        const timepoints = events.map(event => Math.round(event.time * 1000));
+        
+        // Create MQTT message
+        const mqttMessage = {
+          type: 'mqtt_publish',
+          topic: `${mqttName}/request/measurement_timepoints`,
+          payload: {
+            timepoints: timepoints,
+            timestamp: Date.now(),
+            detectorId: detectorId
+          }
+        };
+
+        // Send via WebSocket
+        try {
+          websocket.send(JSON.stringify(mqttMessage));
+          console.log(`Sent measurement timepoints to ${mqttName}:`, timepoints);
+        } catch (error) {
+          console.error(`Failed to send measurement timepoints to ${mqttName}:`, error);
+        }
+      }
+    });
   };
 
   // Add effect to handle automatic memory addition when events are being sent
@@ -274,6 +330,21 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       .flat() // Flatten the array of arrays
       .filter(event => event.type === 'setPumpSpeed')
       .sort((a, b) => a.time - b.time);
+  };
+
+  const extractDetectorEvents = (eventList) => {
+    // Extract detector/spectrometer measurement events
+    return eventList
+      .flat() // Flatten the array of arrays
+      .filter(event => event.type === 'setDetectorMeasurement')
+      .sort((a, b) => a.time - b.time);
+  };
+
+  const getDetectorEventsAtTime = (detectorId, detectorEvents, currentTime) => {
+    return detectorEvents.filter(event => 
+      event.target === detectorId && 
+      Math.abs(event.time - currentTime) < 0.1 // Within 0.1 second tolerance
+    );
   };
 
   const recalculateEventListForDevices = (eventList) => {
@@ -797,20 +868,53 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
           else if (reachedNode.node.type === 'detector' || reachedNode.node.type === 'USBSpectrometer' || reachedNode.node.type === 'MQTTSpectrometer') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
+            const waitTime = reachedNode.node.properties.find(property => property.name === 'wait time').value;
+            const measurementTime = reachedNode.node.properties.find(property => property.name === 'measurement time').value;
+            
+            // Create detector measurement end event when droplet front reaches detector
+            event={
+              type: 'setDetectorMeasurement',
+              target: reachedNode.node.id,
+              time: newTimePassed+waitTime,
+              value: 1 
+            };
+            eventList.push(event);
+
+            // Add events to set pump speeds before and after measurement
+            graphData.nodes.forEach(node => {
+              if (node.type === 'pump') {
+                const currentSpeed = getPumpSpeedAtTime(node.id, pumpEvents, currentTime);
+                event = {
+                  type: 'setPumpSpeed',
+                  target: node.id,
+                  time: newTimePassed + waitTime + measurementTime,
+                  value: currentSpeed
+                };
+                eventList.push(event);
+                event = {
+                  type: 'setPumpSpeed',
+                  target: node.id,
+                  time: newTimePassed,
+                  value: 0
+                };
+                eventList.push(event);
+              }
+            });
+            
             const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
             if (nextNode) {
               const nextEdge = graphData.links.find(link => link.source === smallestFrontTimeDroplet[0].frontNextNodeID && link.target === nextNode.node.id);
               //aktualizuje krople
               currentBlockDroplets.forEach(droplet => {
-                droplet.frontTimeToReachNextNode -= smallestFrontTime;
-                droplet.rearTimeToReachNextNode -= smallestFrontTime;
+                droplet.frontTimeToReachNextNode -= smallestFrontTime-(measurementTime + waitTime);
+                droplet.rearTimeToReachNextNode -= smallestFrontTime-(measurementTime + waitTime);
                 droplet.frontVolumetricDistanceToNextNode -= smallestFrontTime * droplet.frontVolumetricSpeed;
                 droplet.rearVolumetricDistanceToNextNode -= smallestFrontTime * droplet.rearVolumetricSpeed;
                 droplet.frontVolumetricPosition += smallestFrontTime * droplet.frontVolumetricSpeed;
                 droplet.rearVolumetricPosition += smallestFrontTime * droplet.rearVolumetricSpeed;
               });
               smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode = calculateEdgeVolume(nextEdge);
-              smallestFrontTimeDroplet[0].frontTimeToReachNextNode = smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode / smallestFrontTimeDroplet[0].frontVolumetricSpeed;
+              smallestFrontTimeDroplet[0].frontTimeToReachNextNode = (smallestFrontTimeDroplet[0].frontVolumetricDistanceToNextNode / smallestFrontTimeDroplet[0].frontVolumetricSpeed)+(measurementTime + waitTime);
               smallestFrontTimeDroplet[0].frontNextNodeID = nextNode.node.id;
             }
           }
@@ -1060,6 +1164,9 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
           else if (reachedNode.node.type === 'detector' || reachedNode.node.type === 'USBSpectrometer' || reachedNode.node.type === 'MQTTSpectrometer') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
+            
+            
+            
             const nextNode = orderedNodes.find(node => node.distance === reachedNodeDistance - 1 && node.node.type !== 'pump');
             if (nextNode) {
               const nextEdge = graphData.links.find(link => link.source === smallestRearTimeDroplet[0].rearNextNodeID && link.target === nextNode.node.id);
@@ -1124,6 +1231,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     console.log('dropletHistory in event generator: ', dropletHistory);
     console.log('eventList: ', eventList.sort((a, b) => a.time - b.time));
     setPumpEvents(extractPumpEvents(eventList));
+    setDetectorEvents(extractDetectorEvents(eventList));
+    console.log('Detector events:', extractDetectorEvents(eventList));
     return eventList;
   }
   // First useEffect to set initial graphData
@@ -1524,6 +1633,10 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     setDisplayTimelineDropletInfo(!displayTimelineDropletInfo);
   };
   
+  const toggleDetectorEvents = () => {
+    setDisplayDetectorEvents(!displayDetectorEvents);
+  };
+  
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1860,6 +1973,13 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
                 <span>Show Timeline Droplet Info</span>
                 <span style={styles.checkmark}>{displayTimelineDropletInfo ? '✓' : ''}</span>
               </div>
+              <div 
+                style={styles.menuItem}
+                onClick={toggleDetectorEvents}
+              >
+                <span>Show Detector Events</span>
+                <span style={styles.checkmark}>{displayDetectorEvents ? '✓' : ''}</span>
+              </div>
             </div>
           )}
         </div>
@@ -2139,6 +2259,107 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
                         y1={-25}
                         x2={(currentTime / maxTime) * 80}
                         y2={15}
+                        stroke="red"
+                        strokeWidth={1}
+                        strokeDasharray="2,2"
+                      />
+                    </g>
+                  </g>
+                );
+              }
+              return null;
+            })}
+
+            {/* Render detector events */}
+            {displayDetectorEvents && graphData.nodes.map((node, index) => {
+              if (node.type === 'detector' || node.type === 'USBSpectrometer' || node.type === 'MQTTSpectrometer') {
+                const currentEvents = getDetectorEventsAtTime(node.id, detectorEvents, currentTime);
+                const detectorSpecificEvents = detectorEvents.filter(event => event.target === node.id);
+                const maxTime = dropletHistory[dropletHistory.length - 1]?.time || 1;
+                
+                return (
+                  <g key={`detector-events-${node.id}`}>
+                    {/* Current detector events indicator */}
+                    {currentEvents.length > 0 && (
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={20}
+                        fill="none"
+                        stroke="#FF6B35"
+                        strokeWidth={3}
+                        opacity={0.8}
+                      />
+                    )}
+                    
+                    {/* Event count display */}
+                    <text
+                      x={node.x}
+                      y={node.y - 35}
+                      textAnchor="middle"
+                      fill="#FF6B35"
+                      fontSize="12px"
+                    >
+                      {`Events: ${detectorSpecificEvents.length}`}
+                    </text>
+                    
+                    {/* Event timeline visualization */}
+                    <g transform={`translate(${node.x - 40}, ${node.y - 65})`}>
+                      {detectorSpecificEvents.map((event, i) => {
+                        const width = 80;
+                        const x = 0;
+                        const y = 0;
+                        
+                        // Calculate position based on time
+                        const timePosition = (event.time / maxTime) * width;
+                        
+                        return (
+                          <g key={`detector-event-${i}`}>
+                            {/* Event marker */}
+                            <circle
+                              cx={x + timePosition}
+                              cy={y}
+                              r={3}
+                              fill={event.eventSubtype === 'dropletFrontReached' ? '#FF6B35' : '#FFA500'}
+                            />
+                            {/* Event line */}
+                            <line
+                              x1={x + timePosition}
+                              y1={y - 5}
+                              x2={x + timePosition}
+                              y2={y + 5}
+                              stroke="#FF6B35"
+                              strokeWidth={1}
+                            />
+                            {/* Time label */}
+                            <text
+                              x={x + timePosition}
+                              y={y + 15}
+                              textAnchor="middle"
+                              fill="#FF6B35"
+                              fontSize="8px"
+                            >
+                              {event.time.toFixed(1)}s
+                            </text>
+                            {/* Droplet ID */}
+                            <text
+                              x={x + timePosition}
+                              y={y - 10}
+                              textAnchor="middle"
+                              fill="#FF6B35"
+                              fontSize="8px"
+                            >
+                              D{event.dropletId}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {/* Current time indicator */}
+                      <line
+                        x1={(currentTime / maxTime) * 80}
+                        y1={-25}
+                        x2={(currentTime / maxTime) * 80}
+                        y2={25}
                         stroke="red"
                         strokeWidth={1}
                         strokeDasharray="2,2"

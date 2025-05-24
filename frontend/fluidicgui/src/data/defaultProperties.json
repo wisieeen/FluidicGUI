@@ -184,6 +184,12 @@
         "default": "10"
       },
       {
+        "name": "measurement time",
+        "label": "wait to finish measurement, delay in ms after measurement starts.",
+        "type": "number",
+        "default": "2000000"
+      },
+      {
         "name": "initial volume",
         "label": "tube volume  [uL]",
         "type": "number",
