@@ -130,10 +130,19 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       
       // Check if this is an MQTT spectrometer
       if (detectorNode && (detectorNode.type === 'MQTTSpectrometer' || detectorNode.data?.type === 'MQTTSpectrometer')) {
-        // Extract MQTT name from detector properties
-        const mqttName = detectorNode.data?.properties?.find(prop => prop.name === 'mqttName')?.value || 
-                        detectorNode.data?.properties?.find(prop => prop.name === 'mqtt_name')?.value ||
-                        detectorId; // fallback to detector ID
+        // Extract MQTT name using the same pattern as CustomNode.js
+        let mqttName = detectorNode.data?.MQTTname;
+        
+        // If MQTTname isn't directly on the data object, look for it in properties array
+        if (!mqttName && detectorNode.data?.properties) {
+          const mqttNameProp = detectorNode.data.properties.find(prop => prop.name === 'MQTTname');
+          mqttName = mqttNameProp ? (detectorNode.data[mqttNameProp.name] || mqttNameProp.default) : undefined;
+        }
+        
+        // Fallback to detector ID if still no MQTT name found
+        if (!mqttName) {
+          mqttName = detectorId;
+        }
         
         // Extract timepoints from events (convert to milliseconds)
         const timepoints = events.map(event => Math.round(event.time * 1000));
@@ -2460,45 +2469,20 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
         <>
           {console.log('Rendering SpectrometerMQTT component for node:', selectedNode)}
           {(() => {
-            console.log('Simulation.js: selectedNode.data:', selectedNode.data);
-            console.log('Simulation.js: selectedNode.data.MQTTname:', selectedNode.data?.MQTTname);
-            console.log('Simulation.js: selectedNode.data.properties:', selectedNode.data?.properties);
-            const mqttNameFromProps = selectedNode.data?.properties?.find(prop => prop.name === 'MQTTname');
-            console.log('Simulation.js: mqttNameFromProps:', mqttNameFromProps);
+            // Extract MQTT name using the same pattern as sendMeasurementTimepointsToSpectrometers
+            let detectorId = selectedNode.data?.MQTTname;
             
-            // Check if the MQTTname is stored as a direct property on the data object
-            if (selectedNode.data?.properties) {
-              selectedNode.data.properties.forEach(prop => {
-                if (prop.name === 'MQTTname') {
-                  console.log('Simulation.js: Found MQTTname property:', prop);
-                  console.log('Simulation.js: Property value:', selectedNode.data[prop.name]);
-                  console.log('Simulation.js: Property default:', prop.default);
-                }
-              });
-            }
-            // Try multiple ways to get the MQTT name
-            let detectorId = selectedNode.data?.MQTTname || 
-                           selectedNode.data?.['MQTTname'] ||  // Direct property access
-                           mqttNameFromProps?.value || 
-                           mqttNameFromProps?.default ||
-                           selectedNode.data?.mqttName ||
-                           selectedNode.data?.mqtt_name;
-            
-            // If still not found, check if the label looks like an MQTT name
-            if (!detectorId && selectedNode.label && selectedNode.label.includes('spectrometer')) {
-              detectorId = selectedNode.label;
+            // If MQTTname isn't directly on the data object, look for it in properties array
+            if (!detectorId && selectedNode.data?.properties) {
+              const mqttNameProp = selectedNode.data.properties.find(prop => prop.name === 'MQTTname');
+              detectorId = mqttNameProp ? (selectedNode.data[mqttNameProp.name] || mqttNameProp.default) : undefined;
             }
             
-            // Temporary hardcoded fallback for testing - if this is an MQTT spectrometer and we still don't have a detectorId
-            if (!detectorId && (selectedNode.type === 'MQTTSpectrometer' || selectedNode.data?.type === 'MQTTSpectrometer')) {
-              console.log('Simulation.js: Using hardcoded fallback spectrometer_1');
-              detectorId = 'spectrometer_1';
-            }
-            
-            // Final fallback to node ID
+            // Fallback to node ID if still no MQTT name found
             if (!detectorId) {
               detectorId = selectedNode.id;
             }
+            
             console.log('Simulation.js: Using detectorId:', detectorId);
             return (
               <SpectrometerMQTT
@@ -2603,7 +2587,23 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
               <div style={{ pointerEvents: 'auto' }}>
                 <SpectrometerMQTT 
                   {...overlayComponent.props} 
-                  detectorId={overlayComponent.props.detector.data?.MQTTname || overlayComponent.props.detector.data?.properties?.find(prop => prop.name === 'MQTTname')?.value || overlayComponent.props.detector.id}
+                  detectorId={(() => {
+                    // Extract MQTT name using the same pattern as other parts of the code
+                    let detectorId = overlayComponent.props.detector.data?.MQTTname;
+                    
+                    // If MQTTname isn't directly on the data object, look for it in properties array
+                    if (!detectorId && overlayComponent.props.detector.data?.properties) {
+                      const mqttNameProp = overlayComponent.props.detector.data.properties.find(prop => prop.name === 'MQTTname');
+                      detectorId = mqttNameProp ? (overlayComponent.props.detector.data[mqttNameProp.name] || mqttNameProp.default) : undefined;
+                    }
+                    
+                    // Fallback to node ID if still no MQTT name found
+                    if (!detectorId) {
+                      detectorId = overlayComponent.props.detector.id;
+                    }
+                    
+                    return detectorId;
+                  })()}
                   graphRef={graphRefs.current[overlayComponent.props.detector.id]}
                 />
               </div>
