@@ -1,16 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { backgroundVariants } from '../../styles/backgroundStyles';
 
-const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "Panel", width, height, onClose }) => {
+const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "Panel", width, height, onClose, onPositionChange }) => {
   const [position, setPosition] = useState(initialPosition);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [hasBeenMoved, setHasBeenMoved] = useState(false); // Track if user has moved the panel
   const panelRef = useRef(null);
 
-  // Update position when initialPosition changes
+  // Only update position when initialPosition changes if the panel hasn't been moved by user
   useEffect(() => {
-    setPosition(initialPosition);
-  }, [initialPosition]);
+    if (!hasBeenMoved) {
+      setPosition(initialPosition);
+    }
+  }, [initialPosition, hasBeenMoved]);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -31,7 +34,13 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
         const boundedX = Math.min(Math.max(0, newX), windowWidth - panelWidth);
         const boundedY = Math.min(Math.max(60, newY), windowHeight - panelHeight); // 60px minimum top margin
         
-        setPosition({ x: boundedX, y: boundedY });
+        const newPosition = { x: boundedX, y: boundedY };
+        setPosition(newPosition);
+        
+        // Notify parent of position change
+        if (onPositionChange) {
+          onPositionChange(newPosition);
+        }
       }
     };
 
@@ -48,7 +57,7 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset]);
+  }, [isDragging, dragOffset, onPositionChange]);
 
   const handleMouseDown = (e) => {
     if (panelRef.current) {
@@ -58,6 +67,7 @@ const DraggablePanel = ({ children, initialPosition = { x: 0, y: 0 }, title = "P
         y: e.clientY - rect.top
       });
       setIsDragging(true);
+      setHasBeenMoved(true); // Mark panel as moved by user
     }
   };
 

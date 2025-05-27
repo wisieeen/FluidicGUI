@@ -59,6 +59,9 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
   const graphRefs = useRef({});
   const [overlayComponent, setOverlayComponent] = useState(null);
 
+  // Add state to track spectrometer panel positions
+  const [spectrometerPositions, setSpectrometerPositions] = useState({});
+
   // Add at the beginning of the component, after the state initialization
   useEffect(() => {
     // Log all nodes and their types for debugging
@@ -1721,6 +1724,19 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     setVisiblePumpPanel((prev) => (prev === pumpId ? null : pumpId));
   };
 
+  // Function to handle spectrometer position updates
+  const handleSpectrometerPositionChange = (spectrometerKey, newPosition) => {
+    setSpectrometerPositions(prev => ({
+      ...prev,
+      [spectrometerKey]: newPosition
+    }));
+  };
+
+  // Function to get spectrometer position with fallback to default
+  const getSpectrometerPosition = (spectrometerKey) => {
+    return spectrometerPositions[spectrometerKey] || { x: 150, y: 100 };
+  };
+
   // Add styles for the display menu
   const styles = {
     container: {
@@ -2460,7 +2476,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
             detectorId={selectedNode.id}
             detectorName={selectedNode.label || selectedNode.id}
             onClose={() => setSelectedNode(null)}
-            initialPosition={{ x: 150, y: 100 }}
+            initialPosition={getSpectrometerPosition(`usb_${selectedNode.id}`)}
+            onPositionChange={(newPosition) => handleSpectrometerPositionChange(`usb_${selectedNode.id}`, newPosition)}
             isVisible={true}
           />
         </>
@@ -2490,7 +2507,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
                 detectorId={detectorId}
                 detectorName={selectedNode.label || selectedNode.id}
                 onClose={() => setSelectedNode(null)}
-                initialPosition={{ x: 150, y: 100 }}
+                initialPosition={getSpectrometerPosition(`mqtt_${selectedNode.id}`)}
+                onPositionChange={(newPosition) => handleSpectrometerPositionChange(`mqtt_${selectedNode.id}`, newPosition)}
                 isVisible={true}
                 graphRef={graphRefs.current[selectedNode.id]}
               />

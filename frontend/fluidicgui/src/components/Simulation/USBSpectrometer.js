@@ -20,7 +20,7 @@ const waterfallColorSchemeOptions = {
   turbo: 'Turbo'
 };
 
-const USBSpectrometer = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus }) => {
+const USBSpectrometer = ({ detector, readings = [], onClose, initialPosition = { x: 150, y: 100 }, detectorId, detectorName, isVisible, position, onMove, onResize, detectorStatus, onPositionChange }) => {
   const buttonVariants = useButtonStyles();
   const [detectorReadings, setDetectorReadings] = useState([]);
   
@@ -430,6 +430,7 @@ const USBSpectrometer = ({ detector, readings = [], onClose, initialPosition = {
       width={panelSize.width}
       height={panelSize.height}
       onClose={onClose}
+      onPositionChange={onPositionChange}
     >
       <div 
         ref={panelRef}
