@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import DraggablePanel from './DraggablePanel';
 import { useButtonStyles } from '../../styles/ButtonStyleProvider';
 import { backgroundVariants } from '../../styles/backgroundStyles';
@@ -93,6 +93,22 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
   const wsRef = useRef(null); // Ref to hold the WebSocket instance
   const mqttTopicRef = useRef('spectrometer_1'); // Ref to hold the current MQTT topic
   const cameraRef = useRef(null);
+  const localGraphRef = useRef(null); // Local ref for the graph component
+  
+  // Create a composite ref that combines the external graphRef prop with localGraphRef
+  const compositeGraphRef = useCallback((node) => {
+    // Set the node to our local ref
+    localGraphRef.current = node;
+    
+    // Also set it to the external ref if provided
+    if (graphRef) {
+      if (typeof graphRef === 'function') {
+        graphRef(node);
+      } else if (graphRef.current !== undefined) {
+        graphRef.current = node;
+      }
+    }
+  }, [graphRef]);
   
   // Handle frame accumulation change
   const handleFrameAccumCountChange = (count) => {
@@ -207,20 +223,25 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
               let maxWavelength = 650; // Default max wavelength
               
               // Try to use calibration points from graph component if it exists
-              if (graphRef.current && graphRef.current.getCalibrationSettings) {
-                const calibrationSettings = graphRef.current.getCalibrationSettings();
-                if (calibrationSettings.calibrationPoints && calibrationSettings.calibrationPoints.length >= 2) {
-                  const calibrationPoint1Position = calibrationSettings.calibrationPoints[0].position;
-                  const calibrationPoint2Position = calibrationSettings.calibrationPoints[1].position;
-                  const calibrationPoint1Wavelength = calibrationSettings.calibrationPoints[0].wavelength;
-                  const calibrationPoint2Wavelength = calibrationSettings.calibrationPoints[1].wavelength;
-                  // Get wavelengths from calibration points
-                  const wavelengthPerPosition = (calibrationPoint2Wavelength - calibrationPoint1Wavelength)/(calibrationPoint2Position - calibrationPoint1Position);
-                  minWavelength = calibrationPoint1Wavelength - calibrationPoint1Position * wavelengthPerPosition;
-                  maxWavelength = calibrationPoint2Wavelength + (1 - calibrationPoint2Position) * wavelengthPerPosition;
-                  console.log('[SpectrometerMQTT] Calibration settings:', calibrationSettings);
-                  
+              if (localGraphRef.current?.getCalibrationSettings) {
+                try {
+                  const calibrationSettings = localGraphRef.current.getCalibrationSettings();
+                  if (calibrationSettings.calibrationPoints && calibrationSettings.calibrationPoints.length >= 2) {
+                    const calibrationPoint1Position = calibrationSettings.calibrationPoints[0].position;
+                    const calibrationPoint2Position = calibrationSettings.calibrationPoints[1].position;
+                    const calibrationPoint1Wavelength = calibrationSettings.calibrationPoints[0].wavelength;
+                    const calibrationPoint2Wavelength = calibrationSettings.calibrationPoints[1].wavelength;
+                    // Get wavelengths from calibration points
+                    const wavelengthPerPosition = (calibrationPoint2Wavelength - calibrationPoint1Wavelength)/(calibrationPoint2Position - calibrationPoint1Position);
+                    minWavelength = calibrationPoint1Wavelength - calibrationPoint1Position * wavelengthPerPosition;
+                    maxWavelength = calibrationPoint2Wavelength + (1 - calibrationPoint2Position) * wavelengthPerPosition;
+                    console.log('[SpectrometerMQTT] Calibration settings:', calibrationSettings);
+                  }
+                } catch (error) {
+                  console.warn('[SpectrometerMQTT] Error accessing calibration settings:', error);
                 }
+              } else {
+                console.log('[SpectrometerMQTT] GraphRef not available, using default wavelength range. GraphRef:', graphRef, 'Current:', graphRef?.current);
               }
               
               
@@ -447,7 +468,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       const cropSettings = cameraRef.current?.getCropSettings();
       
       // Get calibration settings from graph component
-      const calSettings = graphRef.current?.getCalibrationSettings();
+      const calSettings = localGraphRef.current?.getCalibrationSettings?.();
       
       if (!camSettings && !calSettings && !cropSettings) {
         console.warn('No settings to save - components may not be mounted');
@@ -473,7 +494,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
           isEnabled: isAccumulating
         },
         // Save peak markers settings if available from graph component
-        peakMarkers: graphRef.current?.getPeakSettings?.() || {
+        peakMarkers: localGraphRef.current?.getPeakSettings?.() || {
           count: 3,
           showMarkers: true
         },
@@ -511,7 +532,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       const cropSettings = cameraRef.current?.getCropSettings();
       
       // Get calibration settings from graph component
-      const calSettings = graphRef.current?.getCalibrationSettings();
+      const calSettings = localGraphRef.current?.getCalibrationSettings?.();
       
       if (!camSettings && !calSettings && !cropSettings) {
         console.warn('No settings to export - components may not be mounted');
@@ -537,7 +558,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
           isEnabled: isAccumulating
         },
         // Export peak markers settings if available from graph component
-        peakMarkers: graphRef.current?.getPeakSettings?.() || {
+        peakMarkers: localGraphRef.current?.getPeakSettings?.() || {
           count: 3,
           showMarkers: true
         },
@@ -620,9 +641,9 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       }
       
       // Apply calibration settings if available
-      if (savedSettings.calibration && graphRef.current) {
+      if (savedSettings.calibration && localGraphRef.current?.applyCalibrationSettings) {
         try {
-          graphRef.current.applyCalibrationSettings(savedSettings.calibration);
+          localGraphRef.current.applyCalibrationSettings(savedSettings.calibration);
         } catch (err) {
           console.error('Error applying calibration settings:', err);
         }
@@ -644,9 +665,9 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       }
       
       // Apply peak markers settings if available
-      if (savedSettings.peakMarkers && graphRef.current?.applyPeakSettings) {
+      if (savedSettings.peakMarkers && localGraphRef.current?.applyPeakSettings) {
         try {
-          graphRef.current.applyPeakSettings(savedSettings.peakMarkers);
+          localGraphRef.current.applyPeakSettings(savedSettings.peakMarkers);
         } catch (err) {
           console.error('Error applying peak markers settings:', err);
         }
@@ -734,9 +755,9 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
             }
             
             // Apply calibration settings if available
-            if (importedSettings.calibration && graphRef.current) {
+            if (importedSettings.calibration && localGraphRef.current?.applyCalibrationSettings) {
               try {
-                graphRef.current.applyCalibrationSettings(importedSettings.calibration);
+                localGraphRef.current.applyCalibrationSettings(importedSettings.calibration);
               } catch (err) {
                 console.error('Error applying imported calibration settings:', err);
               }
@@ -758,9 +779,9 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
             }
             
             // Apply peak markers settings if available
-            if (importedSettings.peakMarkers && graphRef.current?.applyPeakSettings) {
+            if (importedSettings.peakMarkers && localGraphRef.current?.applyPeakSettings) {
               try {
-                graphRef.current.applyPeakSettings(importedSettings.peakMarkers);
+                localGraphRef.current.applyPeakSettings(importedSettings.peakMarkers);
               } catch (err) {
                 console.error('Error applying peak markers settings:', err);
               }
@@ -1060,7 +1081,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
             {/* Graph component */}
             {showGraph && (
               <MQTTGraphComponent 
-                ref={graphRef}
+                ref={compositeGraphRef}
                 onResize={handleGraphResize}
                 lineData={processedData}
                 onFrameAccumCountChange={handleFrameAccumCountChange}

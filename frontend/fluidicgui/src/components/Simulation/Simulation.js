@@ -448,6 +448,17 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       return [];
     }
 
+    // Validate required data
+    if (!graphData || !graphData.nodes || !graphData.links) {
+      console.warn('Invalid graphData for event generation');
+      return [];
+    }
+
+    if (!selectedCarrierPumps || selectedCarrierPumps.length === 0) {
+      console.warn('No carrier pumps selected for event generation');
+      return [];
+    }
+
     const orderedNodes = orderNodesByDistance(findOutletNode(graphData.nodes), graphData.nodes, graphData.links);
     console.log('orderedNodes: ', orderedNodes);
     
@@ -499,18 +510,23 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       node.pauseLevel = 0;
 
     });
+    
     //ustawia carrier pump na odpowiednią predkość
-    const carrierPumpConnector = graphData.links.find(link => link.source === selectedCarrierPumps[0]).target;
-    if (carrierPumpConnector) {
+    const carrierPumpLink = graphData.links.find(link => link.source === selectedCarrierPumps[0]);
+    if (carrierPumpLink) {
+      const carrierPumpConnector = carrierPumpLink.target;
       const connectorNode = orderedNodes.find(node => node.node.id === carrierPumpConnector);
-      connectorNode.inletVolumetricSpeed = commonVolumetricSpeed;
-      connectorNode.outletVolumetricSpeed = commonVolumetricSpeed;
-      connectorNode.connectedPump = graphData.nodes.find(node => node.id === selectedCarrierPumps[0]);
-      connectorNode.connectedPumpRatio = 1;
-      connectorNode.connectedPumpSpeedAtPause = commonVolumetricSpeed;
-      //connectorNode.requestedRatio = 0;
-      connectorNode.pauseLevel = 0;
+      if (connectorNode) {
+        connectorNode.inletVolumetricSpeed = commonVolumetricSpeed;
+        connectorNode.outletVolumetricSpeed = commonVolumetricSpeed;
+        connectorNode.connectedPump = graphData.nodes.find(node => node.id === selectedCarrierPumps[0]);
+        connectorNode.connectedPumpRatio = 1;
+        connectorNode.connectedPumpSpeedAtPause = commonVolumetricSpeed;
+        //connectorNode.requestedRatio = 0;
+        connectorNode.pauseLevel = 0;
+      }
     }
+    
     let event = { //it is ok
       type: 'setPumpSpeed',
       target: selectedCarrierPumps[0],
@@ -534,8 +550,8 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     let position = -0.001;
     //prepares all droplets in block and calculates some parameters
     currentBlockDroplets.forEach(droplet => {
-      const prefixVolume = droplet.parameters.find(p => p.name === 'prefixVolume')?.value;
-      const surfixVolume = droplet.parameters.find(p => p.name === 'surfixVolume')?.value;
+      const prefixVolume = droplet.parameters.find(p => p.name === 'prefixVolume')?.value || 0;
+      const surfixVolume = droplet.parameters.find(p => p.name === 'surfixVolume')?.value || 0;
 
       droplet.frontVolumetricSpeed = commonVolumetricSpeed;
       droplet.rearVolumetricSpeed = commonVolumetricSpeed;
@@ -545,8 +561,13 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       droplet.rearVolumetricDistanceToNextNode = Math.abs(droplet.rearVolumetricPosition); 
       droplet.frontTimeToReachNextNode = 0;
       droplet.rearTimeToReachNextNode = 0;
-      droplet.frontNextNodeID = findFurthestNode(findOutletNode(graphData.nodes), graphData.nodes, graphData.links).id;
-      droplet.rearNextNodeID = findFurthestNode(findOutletNode(graphData.nodes), graphData.nodes, graphData.links).id;
+      
+      const furthestNode = findFurthestNode(findOutletNode(graphData.nodes), graphData.nodes, graphData.links);
+      if (furthestNode) {
+        droplet.frontNextNodeID = furthestNode.id;
+        droplet.rearNextNodeID = furthestNode.id;
+      }
+      
       droplet.pumpSpeedMultiplier = 1;
       droplet.pauseLevel = 0;
       droplet.frontVolumetricSpeedAtPause = 0;
@@ -556,7 +577,9 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
 
       position -= ( prefixVolume + surfixVolume);
     });
-    console.log('findFurthestNode: ', findFurthestNode(findOutletNode(graphData.nodes), graphData.nodes, graphData.links).id);
+    
+    const furthestNodeForLog = findFurthestNode(findOutletNode(graphData.nodes), graphData.nodes, graphData.links);
+    console.log('findFurthestNode: ', furthestNodeForLog?.id);
     console.log('Droplet positions initialized, nodes ready');
 
     let lastDropletRearPosition = currentBlockDroplets[currentBlockDroplets.length - 1].rearVolumetricPosition;
@@ -868,8 +891,14 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           }
           else if (reachedNode.node.type === 'detector' || reachedNode.node.type === 'USBSpectrometer' || reachedNode.node.type === 'MQTTSpectrometer') { //przypadek gdy dochodzi do detektora
             console.log('reachedNode (detector): ', reachedNode);
-            const waitTime = reachedNode.node.properties.find(property => property.name === 'wait time').value;
-            const measurementTime = reachedNode.node.properties.find(property => property.name === 'measurement time').value;
+            
+            // Safe property access with fallbacks
+            const nodeProperties = reachedNode.node.properties || [];
+            const waitTimeProperty = nodeProperties.find(property => property && property.name === 'wait time');
+            const measurementTimeProperty = nodeProperties.find(property => property && property.name === 'measurement time');
+            
+            const waitTime = waitTimeProperty?.value || 0;
+            const measurementTime = measurementTimeProperty?.value || 0;
             
             // Create detector measurement end event when droplet front reaches detector
             event={
@@ -1367,6 +1396,24 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     // Only calculate volumes and blocks if not already done
     if (currentBlockDroplets.length === 0) {
       console.log('Calculating thermostat volumes and blocks for droplets:', droplets.length);
+      
+      // Validate all required data before proceeding
+      if (!droplets || droplets.length === 0) {
+        console.warn('No droplets available for event generation');
+        return;
+      }
+      
+      if (!selectedCarrierPumps || selectedCarrierPumps.length === 0) {
+        console.warn('No carrier pumps selected for event generation');
+        return;
+      }
+      
+      if (!graphData || !graphData.nodes || !graphData.links || 
+          graphData.nodes.length === 0 || graphData.links.length === 0) {
+        console.warn('Insufficient graphData for event generation');
+        return;
+      }
+      
       const thermoVol = calculateVolumesBetweenThermostats(graphData);
       
       // Create deep copy of droplets to avoid mutation issues
@@ -1376,8 +1423,14 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       if (blocks.length > 0) {
         setCurrentBlockDroplets(blocks[0].droplets);
         // Generate event list only once when initializing
-        const eventList = generateEventList(blocks);
-        const eventListForDevices = recalculateEventListForDevices(eventList);
+        try {
+          const eventList = generateEventList(blocks);
+          const eventListForDevices = recalculateEventListForDevices(eventList);
+        } catch (error) {
+          console.error('Error generating event list:', error);
+          // Reset to prevent infinite loop
+          setCurrentBlockDroplets([]);
+        }
       }
     }
     
@@ -1580,21 +1633,24 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
     console.log('Node clicked:', node);
     console.log('Node type:', node.type);
     console.log('Node data type:', node.data?.type);
+    console.log('Node data:', node.data);
+    console.log('Node data MQTTname:', node.data?.MQTTname);
+    console.log('Node data properties:', node.data?.properties);
     
     // Check both node.type and node.data.type
     const nodeType = node.type || node.data?.type;
     console.log('Determined node type:', nodeType);
     
+    // Create graph ref for spectrometers if it doesn't exist
+    if ((nodeType === 'USBSpectrometer' || nodeType === 'MQTTSpectrometer') && !graphRefs.current[node.id]) {
+      const graphRef = React.createRef();
+      graphRefs.current[node.id] = graphRef;
+      console.log('Created graphRef for node:', node.id);
+    }
+    
     if (nodeType === 'pump' || nodeType === 'USBSpectrometer' || nodeType === 'MQTTSpectrometer') {
       setSelectedNode(node);
       console.log('Selected node set:', node.id, nodeType);
-    }
-    if (node.type === 'detector' || node.type === 'USBSpectrometer' || node.type === 'MQTTSpectrometer') {
-      // Store the graph ref when opening a spectrometer
-      const graphRef = React.createRef();
-      graphRefs.current[node.id] = graphRef;
-      
-      // ... rest of the existing handleNodeClick code ...
     }
   };
 
@@ -2403,14 +2459,59 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
       {selectedNode && (selectedNode.type === 'MQTTSpectrometer' || selectedNode.data?.type === 'MQTTSpectrometer') && (
         <>
           {console.log('Rendering SpectrometerMQTT component for node:', selectedNode)}
-          <SpectrometerMQTT
-            detector={selectedNode}
-            detectorId={selectedNode.id}
-            detectorName={selectedNode.label || selectedNode.id}
-            onClose={() => setSelectedNode(null)}
-            initialPosition={{ x: 150, y: 100 }}
-            isVisible={true}
-          />
+          {(() => {
+            console.log('Simulation.js: selectedNode.data:', selectedNode.data);
+            console.log('Simulation.js: selectedNode.data.MQTTname:', selectedNode.data?.MQTTname);
+            console.log('Simulation.js: selectedNode.data.properties:', selectedNode.data?.properties);
+            const mqttNameFromProps = selectedNode.data?.properties?.find(prop => prop.name === 'MQTTname');
+            console.log('Simulation.js: mqttNameFromProps:', mqttNameFromProps);
+            
+            // Check if the MQTTname is stored as a direct property on the data object
+            if (selectedNode.data?.properties) {
+              selectedNode.data.properties.forEach(prop => {
+                if (prop.name === 'MQTTname') {
+                  console.log('Simulation.js: Found MQTTname property:', prop);
+                  console.log('Simulation.js: Property value:', selectedNode.data[prop.name]);
+                  console.log('Simulation.js: Property default:', prop.default);
+                }
+              });
+            }
+            // Try multiple ways to get the MQTT name
+            let detectorId = selectedNode.data?.MQTTname || 
+                           selectedNode.data?.['MQTTname'] ||  // Direct property access
+                           mqttNameFromProps?.value || 
+                           mqttNameFromProps?.default ||
+                           selectedNode.data?.mqttName ||
+                           selectedNode.data?.mqtt_name;
+            
+            // If still not found, check if the label looks like an MQTT name
+            if (!detectorId && selectedNode.label && selectedNode.label.includes('spectrometer')) {
+              detectorId = selectedNode.label;
+            }
+            
+            // Temporary hardcoded fallback for testing - if this is an MQTT spectrometer and we still don't have a detectorId
+            if (!detectorId && (selectedNode.type === 'MQTTSpectrometer' || selectedNode.data?.type === 'MQTTSpectrometer')) {
+              console.log('Simulation.js: Using hardcoded fallback spectrometer_1');
+              detectorId = 'spectrometer_1';
+            }
+            
+            // Final fallback to node ID
+            if (!detectorId) {
+              detectorId = selectedNode.id;
+            }
+            console.log('Simulation.js: Using detectorId:', detectorId);
+            return (
+              <SpectrometerMQTT
+                detector={selectedNode}
+                detectorId={detectorId}
+                detectorName={selectedNode.label || selectedNode.id}
+                onClose={() => setSelectedNode(null)}
+                initialPosition={{ x: 150, y: 100 }}
+                isVisible={true}
+                graphRef={graphRefs.current[selectedNode.id]}
+              />
+            );
+          })()}
         </>
       )}
       {/* Add styles for PumpActions */}
@@ -2502,6 +2603,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
               <div style={{ pointerEvents: 'auto' }}>
                 <SpectrometerMQTT 
                   {...overlayComponent.props} 
+                  detectorId={overlayComponent.props.detector.data?.MQTTname || overlayComponent.props.detector.data?.properties?.find(prop => prop.name === 'MQTTname')?.value || overlayComponent.props.detector.id}
                   graphRef={graphRefs.current[overlayComponent.props.detector.id]}
                 />
               </div>

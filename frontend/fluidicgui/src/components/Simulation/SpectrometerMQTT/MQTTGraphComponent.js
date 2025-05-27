@@ -1651,7 +1651,7 @@ const GraphComponent = React.forwardRef((props, ref) => {
                     type="number" 
                     min="0" 
                     max="1" 
-                    step="0.0001"
+                    step="0.001"
                     value={point.position}
                     onChange={(e) => updateCalibrationPoint(index, 'position', e.target.value)}
                     style={styles.calibrationInput}
