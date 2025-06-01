@@ -2473,7 +2473,7 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
           {console.log('Rendering USBSpectrometer component for node:', selectedNode)}
           <USBSpectrometer
             detector={selectedNode}
-            detectorId={selectedNode.id}
+            detectorId={selectedNode.MQTTname}
             detectorName={selectedNode.label || selectedNode.id}
             onClose={() => setSelectedNode(null)}
             initialPosition={getSpectrometerPosition(`usb_${selectedNode.id}`)}
@@ -2500,7 +2500,17 @@ const Simulation = ({ nodes = [], edges = [], droplets = [], selectedCarrierPump
               detectorId = selectedNode.id;
             }
             
+            // Additional fallback to spectrometer_1 if detectorId looks like a generated node ID
+            if (detectorId && detectorId.startsWith('node-')) {
+              console.log('Simulation.js: DetectorId looks like generated node ID, using spectrometer_1 as fallback');
+              detectorId = 'spectrometer_1';
+            }
+            
             console.log('Simulation.js: Using detectorId:', detectorId);
+            console.log('Simulation.js: selectedNode.data:', selectedNode.data);
+            console.log('Simulation.js: selectedNode.data.properties:', selectedNode.data?.properties);
+            console.log('Simulation.js: MQTTname from data:', selectedNode.data?.MQTTname);
+            
             return (
               <SpectrometerMQTT
                 detector={selectedNode}

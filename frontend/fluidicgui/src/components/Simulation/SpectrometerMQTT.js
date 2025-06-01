@@ -76,6 +76,17 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
   // Track if we're currently using processed crop data
   const [usingCropData, setUsingCropData] = useState(false);
   
+  // Add useEffect to log processedData changes
+  useEffect(() => {
+    console.log('[SpectrometerMQTT] processedData changed:', {
+      hasProcessedData: !!processedData,
+      hasPixelData: !!processedData?.pixelData,
+      pixelDataKeys: processedData?.pixelData ? Object.keys(processedData.pixelData) : null,
+      showGraph: showGraph,
+      usingCropData: usingCropData
+    });
+  }, [processedData, showGraph, usingCropData]);
+  
   // Save/load settings state
   const [saveMessage, setSaveMessage] = useState('');
   const [cameraSettings, setCameraSettings] = useState(null);
@@ -83,7 +94,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
   
   // Frame accumulation state (shared between Graph and Waterfall)
   const [frameAccumCount, setFrameAccumCount] = useState(10);
-  const [isAccumulating, setIsAccumulating] = useState(true);
+  const [isAccumulating, setIsAccumulating] = useState(false);
   
   // Waterfall color scheme state
   const [waterfallColorScheme, setWaterfallColorScheme] = useState('cividis');
@@ -181,23 +192,42 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
       
       try {
         const data = JSON.parse(event.data);
+        console.log('[SpectrometerMQTT] WebSocket message received:', {
+          topic: data.topic,
+          hasPayload: !!data.payload,
+          payloadType: typeof data.payload,
+          targetTopic: mqttTopicRef.current
+        });
 
         // Check if the message is on the subscribed data topic
         if (data.topic === mqttTopicRef.current) {
+          console.log('[SpectrometerMQTT] Message matches subscribed topic:', mqttTopicRef.current);
+          
           let parsedPayload = null;
           if (data.payload && typeof data.payload === 'string') {
             try {
               parsedPayload = JSON.parse(data.payload);
-            } catch (e) { /* Ignore if not JSON */ }
+              console.log('[SpectrometerMQTT] Parsed string payload successfully');
+            } catch (e) { 
+              console.log('[SpectrometerMQTT] Failed to parse string payload:', e);
+            }
           } else if (data.payload && typeof data.payload === 'object') {
             parsedPayload = data.payload;
+            console.log('[SpectrometerMQTT] Using object payload directly');
           }
 
           // Check if payload contains spectral data
           if (parsedPayload) {
-            // Check if this is processed graph data (from crop)
-            if (parsedPayload.red && parsedPayload.green && parsedPayload.blue && parsedPayload.intensities) {
-              console.log('[SpectrometerMQTT] Received processed graph data from crop');
+            console.log('[SpectrometerMQTT] Processing payload with keys:', Object.keys(parsedPayload));
+            
+            // Check if this is processed graph data (from crop) - updated to match actual spectrometer output
+            if (parsedPayload.red && parsedPayload.green && parsedPayload.blue && parsedPayload.wavelengths) {
+              console.log('[SpectrometerMQTT] Received processed graph data from crop (wavelengths format)');
+              
+              // Calculate intensity as average of RGB channels since spectrometer doesn't send it
+              const intensity = parsedPayload.red.map((r, idx) => 
+                (r + parsedPayload.green[idx] + parsedPayload.blue[idx]) / 3
+              );
               
               // Transform data to expected format for the graph
               const graphData = {
@@ -207,15 +237,17 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
                   red: parsedPayload.red,
                   green: parsedPayload.green,
                   blue: parsedPayload.blue,
-                  intensity: parsedPayload.intensities,
+                  intensity: intensity,
                   lineLength: parsedPayload.wavelengths.length
                 }
               };
               
+              console.log('[SpectrometerMQTT] Setting processedData:', graphData);
               setProcessedData(graphData);
               setUsingCropData(true);  // Flag that we're using crop data
             }
-            else if (parsedPayload.red && parsedPayload.green && parsedPayload.blue ) {
+            // Legacy check for intensities field (keep for backward compatibility)
+            else if (parsedPayload.red && parsedPayload.green && parsedPayload.blue && parsedPayload.intensities) {
               console.log('[SpectrometerMQTT] Received processed graph data from crop');
 
               // Get calibration data from graph component if available
@@ -284,6 +316,7 @@ const SpectrometerMQTT = ({ detector, readings = [], onClose, initialPosition = 
                 }
               };
               
+              console.log('[SpectrometerMQTT] Setting processedData (RGB channels):', graphData);
               setProcessedData(graphData);
               setUsingCropData(true);  // Flag that we're using crop data
             }

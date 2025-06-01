@@ -135,7 +135,15 @@ const GraphComponent = React.forwardRef((props, ref) => {
   
   // Update graph when line data changes
   useEffect(() => {
+    console.log('[MQTTGraphComponent] lineData changed:', {
+      hasLineData: !!lineData,
+      hasPixelData: !!lineData?.pixelData,
+      pixelDataKeys: lineData?.pixelData ? Object.keys(lineData.pixelData) : null
+    });
+    
     if (lineData?.pixelData) {
+      console.log('[MQTTGraphComponent] Processing pixelData with keys:', Object.keys(lineData.pixelData));
+      
       // Always keep the latest raw frame data for display when not accumulating
       setGraphData(lineData.pixelData);
       
@@ -143,9 +151,11 @@ const GraphComponent = React.forwardRef((props, ref) => {
         // Add new frame to accumulation buffer
         setAccumulatedFrames(prev => {
           const newFrames = [...prev, lineData.pixelData];
+          console.log('[MQTTGraphComponent] Accumulating frames:', newFrames.length, '/', frameAccumCount);
           
           // If we've reached our target frame count, process the accumulated data
           if (newFrames.length >= frameAccumCount) {
+            console.log('[MQTTGraphComponent] Processing accumulated frames');
             // Sum the color data across all frames
             const summedData = sumFrameData(newFrames);
             
@@ -157,14 +167,21 @@ const GraphComponent = React.forwardRef((props, ref) => {
             
             // Reset the accumulation buffer
             return [];
+          } else {
+            // Even when accumulating, show the latest frame until we have enough for accumulation
+            console.log('[MQTTGraphComponent] Drawing latest frame while accumulating');
+            drawGraph(lineData.pixelData);
           }
           
           return newFrames;
         });
       } else {
         // If not accumulating, just display the raw frame
+        console.log('[MQTTGraphComponent] Drawing raw frame (not accumulating)');
         drawGraph(lineData.pixelData);
       }
+    } else {
+      console.log('[MQTTGraphComponent] No pixelData in lineData:', lineData);
     }
   }, [lineData, isAccumulating, frameAccumCount, useCalibration, calibrationPoints, flipXAxis]);
   
@@ -467,12 +484,28 @@ const GraphComponent = React.forwardRef((props, ref) => {
   
   // Draw the graph based on pixel data
   const drawGraph = (data) => {
-    if (!canvasRef.current || !data) return;
+    console.log('[MQTTGraphComponent] drawGraph called with data:', {
+      hasData: !!data,
+      hasCanvas: !!canvasRef.current,
+      dataKeys: data ? Object.keys(data) : null,
+      redLength: data?.red?.length,
+      greenLength: data?.green?.length,
+      blueLength: data?.blue?.length,
+      intensityLength: data?.intensity?.length,
+      positionsLength: data?.positions?.length
+    });
+    
+    if (!canvasRef.current || !data) {
+      console.log('[MQTTGraphComponent] drawGraph early return - no canvas or data');
+      return;
+    }
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
+    
+    console.log('[MQTTGraphComponent] Canvas dimensions:', { width, height });
     
     // Clear the canvas
     ctx.clearRect(0, 0, width, height);
